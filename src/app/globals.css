@@ -1,0 +1,68 @@
+@import "tailwindcss";
+@import "@fontsource/ibm-plex-sans-arabic/arabic-400.css";
+@import "@fontsource/ibm-plex-sans-arabic/arabic-500.css";
+@import "@fontsource/ibm-plex-sans-arabic/arabic-600.css";
+@import "@fontsource/ibm-plex-sans-arabic/arabic-700.css";
+@import "@fontsource/ibm-plex-sans-arabic/latin-400.css";
+@import "@fontsource/ibm-plex-sans-arabic/latin-600.css";
+
+/*
+ * Design tokens. White surfaces, near-black text, grey borders and one calm
+ * accent used sparingly. The final accent/logo are provisional until the
+ * official identity is approved.
+ */
+:root {
+  --background: #ffffff;
+  --foreground: #1a1a1a;
+  --muted: #f5f5f4;
+  --muted-foreground: #5c5c5c;
+  --border: #e2e2df;
+  --accent: #1f5f5b;
+  --accent-foreground: #ffffff;
+  --focus: #1f5f5b;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --font-sans: "IBM Plex Sans Arabic", system-ui, "Segoe UI", Tahoma, sans-serif;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  line-height: 1.8; /* Arabic body text needs generous leading */
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Keep Latin text, URLs and numbers readable inside RTL paragraphs. */
+.ltr-isolate {
+  unicode-bidi: isolate;
+  direction: ltr;
+}
