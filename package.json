@@ -12,7 +12,9 @@
     "format": "prettier --write .",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx scripts/migrate.ts",
-    "db:seed": "tsx scripts/seed-reference.ts"
+    "db:seed": "tsx scripts/seed-reference.ts",
+    "db:seed:sample": "tsx scripts/seed-sample.ts",
+    "db:purge:sample": "tsx scripts/seed-sample.ts --purge"
   },
   "dependencies": {
     "@fontsource/ibm-plex-sans-arabic": "^5.3.0",

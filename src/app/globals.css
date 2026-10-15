@@ -66,3 +66,9 @@ body {
   unicode-bidi: isolate;
   direction: ltr;
 }
+
+/* Very light eight-point-star lattice, used once on the home hero. */
+.pattern-star {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64' fill='none' stroke='%231f5f5b' stroke-opacity='.16' stroke-width='1'%3E%3Crect x='16' y='16' width='32' height='32'/%3E%3Crect x='16' y='16' width='32' height='32' transform='rotate(45 32 32)'/%3E%3C/svg%3E");
+  mask-image: linear-gradient(to right, #000 0%, transparent 80%);
+}
