@@ -94,7 +94,25 @@ cached pages refresh within a few minutes.
 - Video/audio players are not embedded yet; sources appear as links. Embedding comes with source handling (Phase 5).
 - Layout was verified by markup and HTTP checks only, not in a real browser or on a phone; please review it visually.
 
-## Deployment
+## Deploying with Supabase + Vercel
+
+1. **Supabase:** create a project (pick a region near your visitors; use the same region for Vercel Functions).
+   Choose a strong database password and keep it private.
+2. **Vercel:** import the GitHub repo. Add `NEXT_PUBLIC_SITE_URL` (your site URL) and `DATABASE_URL` =
+   the **Transaction pooler** string (port 6543) from Supabase's *Connect* panel. Redeploy after changing either.
+3. **Create the tables, from your computer:** put the **Session pooler** string (port 5432) in `.env` as
+   `DATABASE_URL`, then run `npm run db:migrate` and `npm run db:seed`.
+4. If a connection fails with `self-signed certificate in certificate chain`, append `?sslmode=no-verify`
+   to that connection string (encrypted, but the server's identity is not verified).
+
+**Security — important on Supabase.** Supabase publishes the `public` schema through an HTTP API, and tables
+created by a migration tool have row-level security *off*. `npm run db:migrate` therefore always finishes by
+running `hardenDatabase()` (`src/lib/db/harden.ts`): it enables RLS on every table and revokes the `anon` /
+`authenticated` roles. The app connects directly as the table owner, which bypasses RLS, so it is unaffected.
+Never put Supabase's `service_role` key in this project or in Vercel; the app does not use it. Re-run
+`npm run db:migrate` after every schema change.
+
+## Deployment (other hosts)
 
 Not yet documented — completed in Phase 8 (production database, env vars, backups, first admin,
 pre-launch checklist).
