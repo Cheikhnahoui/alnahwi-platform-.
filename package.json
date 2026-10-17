@@ -14,7 +14,8 @@
     "db:migrate": "tsx scripts/migrate.ts",
     "db:seed": "tsx scripts/seed-reference.ts",
     "db:seed:sample": "tsx scripts/seed-sample.ts",
-    "db:purge:sample": "tsx scripts/seed-sample.ts --purge"
+    "db:purge:sample": "tsx scripts/seed-sample.ts --purge",
+    "admin:create": "tsx scripts/create-admin.ts"
   },
   "dependencies": {
     "@fontsource/ibm-plex-sans-arabic": "^5.3.0",

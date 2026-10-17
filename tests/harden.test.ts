@@ -35,7 +35,7 @@ describe("database hardening (Supabase-style exposure)", () => {
     const { client } = await supabaseLikeDb();
     opened.push(client);
     const rows = (await publicTables(client)).rows;
-    expect(rows).toHaveLength(20);
+    expect(rows).toHaveLength(22);
     expect(rows.every((r) => r.relrowsecurity === false)).toBe(true);
     const open = await client.query<{ ok: boolean }>(
       `SELECT has_table_privilege('anon', 'public.content_items', 'SELECT') AS ok`,
@@ -47,12 +47,12 @@ describe("database hardening (Supabase-style exposure)", () => {
     await client.exec(`RESET ROLE`);
   });
 
-  it("enables RLS on all 20 tables and revokes API-role access", async () => {
+  it("enables RLS on all 22 tables and revokes API-role access", async () => {
     const { client, db } = await supabaseLikeDb();
     opened.push(client);
     await hardenDatabase(db);
     const rows = (await publicTables(client)).rows;
-    expect(rows).toHaveLength(20);
+    expect(rows).toHaveLength(22);
     expect(rows.every((r) => r.relrowsecurity === true)).toBe(true);
     for (const role of ["anon", "authenticated"]) {
       for (const priv of ["SELECT", "INSERT", "UPDATE", "DELETE"]) {

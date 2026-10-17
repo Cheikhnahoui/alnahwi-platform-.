@@ -7,8 +7,9 @@
  *   so adding an item to the system never means it is officially endorsed.
  * - Deleting a category or tag that is still used is blocked (ON DELETE RESTRICT).
  * - `search_text` holds Arabic-normalised text for searching; original text is never altered.
- * - Authentication credential/session tables are added in Phase 4 together with the
- *   chosen auth library; `users` already carries role and active state.
+ * - Authentication: `users` carries the role, active state and a scrypt password hash;
+ *   `sessions` stores only hashes of session tokens; `auth_attempts` holds keyed hashes
+ *   used for sign-in rate limiting.
  */
 import { sql } from "drizzle-orm";
 import {
@@ -101,6 +102,9 @@ export const users = pgTable(
       .notNull()
       .references(() => roles.id, { onDelete: "restrict" }),
     isActive: boolean("is_active").notNull().default(true),
+    /** scrypt hash ("scrypt$N$r$p$salt$key"); null = cannot sign in yet. */
+    passwordHash: text("password_hash"),
+    mustChangePassword: boolean("must_change_password").notNull().default(false),
     lastLoginAt: timestamp("last_login_at", { withTimezone: true }),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
@@ -110,6 +114,41 @@ export const users = pgTable(
     index("users_role_idx").on(t.roleId),
   ],
 );
+
+/* ───────────── Sessions & sign-in attempts ───────────── */
+
+/** Only a SHA-256 hash of the session token is stored, never the token itself. */
+export const sessions = pgTable(
+  "sessions",
+  {
+    id: id(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    tokenHash: text("token_hash").notNull().unique(),
+    createdAt: createdAt(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [index("sessions_user_idx").on(t.userId), index("sessions_expires_idx").on(t.expiresAt)],
+);
+
+/** Sign-in attempts for rate limiting. Stores keyed hashes only (no emails, no raw IPs). */
+export const authAttempts = pgTable(
+  "auth_attempts",
+  {
+    id: id(),
+    identifierHash: text("identifier_hash").notNull(),
+    ipHash: text("ip_hash").notNull(),
+    success: boolean("success").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("auth_attempts_identifier_idx").on(t.identifierHash, t.createdAt),
+    index("auth_attempts_ip_idx").on(t.ipHash, t.createdAt),
+  ],
+);
+
 
 /* ───────────── Taxonomy ───────────── */
 
