@@ -3,7 +3,7 @@
 Arabic-first digital library and official site. Next.js (App Router) · TypeScript · Tailwind CSS 4 ·
 PostgreSQL · Drizzle ORM.
 
-> **Current status: foundation, public site and admin sign-in are done; admin content management is next.** See [Status](#status).
+> **Current status: foundation, public site, admin sign-in and material management are done; categories/tags, pages, users and the audit log are next.** See [Status](#status).
 
 ## Requirements
 
@@ -45,7 +45,7 @@ src/lib/db/schema.ts     the whole database schema
 src/lib/db/harden.ts     row-level-security hardening (runs after every migration)
 src/lib/db/seed-reference.ts   idempotent reference data (no scholarly content)
 src/lib/auth/            permissions, passwords (scrypt), sessions, sign-in + rate limiting, request guards
-src/lib/admin/           audit log writer, dashboard statistics
+src/lib/admin/           audit log, dashboard statistics, material management (content.ts), workflow rules (workflow.ts), form validation
 src/lib/search/arabic.ts       Arabic normalisation for search
 src/lib/env.ts           validated environment variables
 src/lib/{storage,validation}/  reserved for later phases
@@ -78,6 +78,21 @@ Sign-in, sessions, roles and the protected panel shell are built (more admin pag
   Permissions are read from the database on every request, and every protected page/action re-checks
   them on the server.
 
+## Managing materials (/admin/content)
+
+- **Roles:** editors create and edit drafts and send them for review; reviewers approve or send back;
+  content managers and the super admin publish, unpublish and archive. A material that is approved or
+  published can only be edited by someone who may publish.
+- **States:** draft → in review → approved → published; archived is separate. A database rule makes
+  publishing an unapproved item impossible. With `workflow.require_review` off (default in v1) an authorised
+  publisher may publish a draft directly (recorded in the audit log as auto-approved); turn it on to require
+  approval first.
+- **Preview** shows exactly what visitors will see, even before publishing. Publishing, unpublishing,
+  archiving and editing refresh the public site immediately (`updateTag("content")`).
+- Every operation re-checks permissions inside the logic layer, runs in one transaction, refreshes the
+  search text and writes an audit entry. Forms are validated again on the server (links must be http/https).
+- Not included yet: deleting materials (archive instead), file uploads, video/audio embedding.
+
 ## Key design decisions
 
 - **ORM:** Drizzle only. Change the schema in `schema.ts`, then `npm run db:generate`, review the SQL, commit.
@@ -97,21 +112,23 @@ Sign-in, sessions, roles and the protected panel shell are built (more admin pag
 
 ## Status
 
-| Area | State |
-| --- | --- |
-| Next.js 16 + TS strict + Tailwind 4, RTL root layout, self-hosted IBM Plex Sans Arabic | Done, builds |
-| Schema + migrations (22 tables) | Done; verified on in-process PostgreSQL (PGlite) |
-| Reference seed, permissions catalogue, Arabic normalisation | Done, tested |
-| Public site: home, library (search, filters, sort, pagination), item pages, categories, about/policy pages, 404/error/loading states | Done; tests, production build and live HTTP checks pass |
-| Supabase hardening (RLS on every table, API roles revoked) | Done; tested against a Supabase-like role setup |
-| Admin sign-in, sessions, roles, first-admin script, protected dashboard | Done; 27 dedicated tests plus a live HTTP login/logout test |
-| Tests | 91 passing (schema, permissions, Arabic search, public queries, hardening, sign-in and sessions) |
-| Admin content management (materials, categories, tags, pages, users, audit viewer), uploads, sitemap/robots/structured data, launch checklist | Not started |
-| `db:migrate` / `db:seed` / `admin:create` against your **real Supabase database** | Written and tested on in-process PostgreSQL; run them on your machine and report any error |
+| Area                                                                                                                                                             | State                                                                                                                  |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Next.js 16 + TS strict + Tailwind 4, RTL root layout, self-hosted IBM Plex Sans Arabic                                                                           | Done, builds                                                                                                           |
+| Schema + migrations (22 tables)                                                                                                                                  | Done; verified on in-process PostgreSQL (PGlite)                                                                       |
+| Reference seed, permissions catalogue, Arabic normalisation                                                                                                      | Done, tested                                                                                                           |
+| Public site: home, library (search, filters, sort, pagination), item pages, categories, about/policy pages, 404/error/loading states                             | Done; tests, production build and live HTTP checks pass                                                                |
+| Supabase hardening (RLS on every table, API roles revoked)                                                                                                       | Done; tested against a Supabase-like role setup                                                                        |
+| Admin sign-in, sessions, roles, first-admin script, protected dashboard                                                                                          | Done; 27 dedicated tests plus a live HTTP login/logout test                                                            |
+| Material management: list, create, edit, preview, review/approve/publish/archive workflow                                                                        | Done; 29 dedicated tests plus a 40-check live HTTP scenario                                                            |
+| Tests                                                                                                                                                            | 120 passing (schema, permissions, Arabic search, public queries, hardening, sign-in and sessions, material management) |
+| Categories and tags management, static pages editor, users management, audit-log viewer, contact form, uploads, sitemap/robots/structured data, launch checklist | Not started                                                                                                            |
+| `db:migrate` / `db:seed` / `admin:create` against your **real Supabase database**                                                                                | Written and tested on in-process PostgreSQL; run them on your machine and report any error                             |
 
 **Known limitations**
 
 - Static pages (about, privacy, terms, copyright) show «غير متاحة حاليًا» until an admin publishes content (the page editor comes in a later admin step).
+- Categories and tags cannot be created from the admin yet: tags are created while editing a material, and categories need the category manager (next step).
 - A missing or unpublished item URL renders the not-found page with `noindex` but HTTP status 200 (a "soft 404"), because the page streams under Cache Components.
 - Video/audio players are not embedded yet; sources appear as links. Embedding comes with source handling (Phase 5).
 - Visiting `/admin` without a session returns a loading shell (HTTP 200) that then redirects to the sign-in page in the browser, rather than an HTTP redirect. No admin data is included in that response.
