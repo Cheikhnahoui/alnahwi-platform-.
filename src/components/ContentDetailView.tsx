@@ -2,6 +2,8 @@ import Link from "next/link";
 import { Calendar, Clock, ExternalLink, User } from "lucide-react";
 import type { ContentDetail } from "@/lib/content/queries";
 import { ContentGrid } from "@/components/ContentGrid";
+import { MediaPlayer } from "@/components/MediaPlayer";
+import { resolvePlayer } from "@/lib/media";
 import {
   formatDate,
   formatDuration,
@@ -19,6 +21,15 @@ export function ContentDetailView({ item }: { item: ContentDetail }) {
   const thumb = safeHttpUrl(item.thumbnailUrl);
   const downloadAllowed =
     item.permissionStatus === "granted" || item.permissionStatus === "public_domain";
+  // Sources that can be played inside the page (the primary one first). The full list of
+  // sources, including these, still appears under "المصادر" as plain links.
+  const players = item.sources
+    .flatMap((src) => {
+      const player = resolvePlayer(src.url, src.kind);
+      return player ? [{ src, player }] : [];
+    })
+    .sort((a, b) => Number(b.src.isPrimary) - Number(a.src.isPrimary));
+  const hasVideo = players.some((p) => p.player.type !== "audio");
   const chip =
     "rounded-full border border-border px-3 py-1 text-sm hover:border-accent hover:text-accent";
 
@@ -61,7 +72,22 @@ export function ContentDetailView({ item }: { item: ContentDetail }) {
           )}
         </ul>
 
-        {thumb && (
+        {players.length > 0 && (
+          <section className="mt-6 space-y-4" aria-label="المشغّل">
+            {players.map(({ src, player }) => (
+              <figure key={src.id}>
+                <MediaPlayer player={player} title={src.sourceName ?? item.title} poster={thumb} />
+                {players.length > 1 && (
+                  <figcaption className="mt-1 text-sm text-muted-foreground">
+                    {src.sourceName ?? SOURCE_KIND_LABELS[src.kind] ?? src.kind}
+                  </figcaption>
+                )}
+              </figure>
+            ))}
+          </section>
+        )}
+
+        {thumb && !hasVideo && (
           // eslint-disable-next-line @next/next/no-img-element
           <img
             src={thumb}

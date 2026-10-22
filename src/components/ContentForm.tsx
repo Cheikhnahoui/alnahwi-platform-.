@@ -266,6 +266,11 @@ export function ContentForm({
           <p className="text-sm text-muted-foreground">
             روابط خارجية فقط. لا يُرفع أي محتوى من مواقع أخرى دون التحقق من الإذن وشروط المنصة.
           </p>
+          <p className="text-sm text-muted-foreground">
+            للفيديو والصوت: اختر نوع المصدر «فيديو» أو «صوت» وألصق رابط YouTube أو Vimeo، أو رابطًا
+            مباشرًا لملف (mp4 / webm للفيديو، mp3 / m4a / ogg للصوت) يبدأ بـ https://. سيُشغَّل داخل
+            صفحة المادة، ويبقى رابط المصدر ظاهرًا في قسم «المصادر».
+          </p>
           <ul className="space-y-3">
             {Array.from({ length: sourceRows }, (_, i) => (
               <li

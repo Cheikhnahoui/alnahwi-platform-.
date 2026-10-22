@@ -10,6 +10,7 @@ export const PERMISSIONS = {
   "content.review": "Approve content or send it back for changes",
   "content.publish": "Publish and unpublish approved content",
   "content.archive": "Archive content",
+  "content.delete": "Permanently delete content items",
   "taxonomy.manage": "Manage categories, tags and content types",
   "pages.edit": "Edit static pages and site information",
   "participations.manage": "Manage scholarly participations",

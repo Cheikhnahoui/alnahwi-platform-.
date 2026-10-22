@@ -1,4 +1,5 @@
 import { safeHttpUrl } from "@/lib/format";
+import { resolvePlayer } from "@/lib/media";
 import { parseDuration, slugify, SLUG_RE } from "./slug";
 
 import { MAX_SOURCES, PERMISSION_STATUSES, SOURCE_KINDS } from "./content-constants";
@@ -159,4 +160,26 @@ export function parseContentForm(fd: FormData): ParseResult {
       sources,
     },
   };
+}
+
+/**
+ * A source the administrator marks as video/audio must really play inside the page.
+ * Sources that are ALREADY saved with the same kind and URL are accepted unchanged, so items
+ * created before this rule stay editable; only new or changed video/audio links are checked.
+ */
+export function unplayableSourceErrors(
+  sources: SourceInput[],
+  existing: { kind: string; url: string }[] = [],
+): Record<string, string> {
+  const errors: Record<string, string> = {};
+  sources.forEach((src, i) => {
+    if (src.kind !== "video" && src.kind !== "audio") return;
+    if (resolvePlayer(src.url, src.kind)) return;
+    if (existing.some((e) => e.kind === src.kind && e.url === src.url)) return;
+    errors[`sources.${i}.url`] =
+      src.kind === "video"
+        ? "هذا الرابط لا يمكن تشغيله داخل الموقع. استخدم رابط YouTube أو Vimeo (https)، أو رابط ملف مباشر بصيغة mp4 أو webm، أو غيّر نوع المصدر إلى «رابط»."
+        : "هذا الرابط لا يمكن تشغيله داخل الموقع. استخدم رابط ملف صوتي مباشر (https) بصيغة mp3 أو m4a أو ogg، أو رابط YouTube أو Vimeo، أو غيّر نوع المصدر إلى «رابط».";
+  });
+  return errors;
 }

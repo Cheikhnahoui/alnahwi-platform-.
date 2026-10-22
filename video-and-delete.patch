@@ -1,0 +1,914 @@
+diff --git a/src/app/admin/(panel)/content/[id]/page.tsx b/src/app/admin/(panel)/content/[id]/page.tsx
+index d7635c5..e344ce4 100644
+--- a/src/app/admin/(panel)/content/[id]/page.tsx
++++ b/src/app/admin/(panel)/content/[id]/page.tsx
+@@ -2,6 +2,7 @@ import type { Metadata } from "next";
+ import Link from "next/link";
+ import { notFound } from "next/navigation";
+ import { ContentForm } from "@/components/ContentForm";
++import { DeleteContentButton } from "@/components/DeleteContentButton";
+ import { StatusBadge } from "@/components/StatusBadge";
+ import { WorkflowPanel } from "@/components/WorkflowPanel";
+ import {
+@@ -131,6 +132,20 @@ export default async function EditContentPage({ params, searchParams }: Props) {
+               )}
+             </ul>
+           </section>
++          {hasPermission(user, "content.delete") && (
++            <section
++              className="rounded-md border border-red-200 p-4 text-sm"
++              aria-labelledby="h-danger"
++            >
++              <h2 id="h-danger" className="mb-2 font-bold text-red-800">
++                حذف المادة
++              </h2>
++              <p className="mb-3 text-muted-foreground">
++                يحذف المادة نهائيًا من الموقع وقاعدة البيانات، مهما كانت حالتها.
++              </p>
++              <DeleteContentButton id={item.id} title={item.title} />
++            </section>
++          )}
+         </aside>
+       </div>
+     </>
+diff --git a/src/app/admin/(panel)/content/actions.ts b/src/app/admin/(panel)/content/actions.ts
+index a0b89a1..bcec680 100644
+--- a/src/app/admin/(panel)/content/actions.ts
++++ b/src/app/admin/(panel)/content/actions.ts
+@@ -12,6 +12,8 @@ import {
+   ValidationError,
+   WorkflowError,
+   createContent,
++  deleteContent,
++  playableSourceErrors,
+   transition,
+   updateContent,
+   type Actor,
+@@ -65,6 +67,8 @@ export async function createContentAction(_prev: FormState, fd: FormData): Promi
+   if (!parsed.ok) return { errors: parsed.errors, values, nonce: crypto.randomUUID() };
+   let row;
+   try {
++    const bad = await playableSourceErrors(getDb(), undefined, parsed.data.sources);
++    if (Object.keys(bad).length) return { errors: bad, values, nonce: crypto.randomUUID() };
+     row = await createContent(getDb(), actorOf(user), parsed.data);
+   } catch (e) {
+     return failure(e, values);
+@@ -80,6 +84,8 @@ export async function updateContentAction(_prev: FormState, fd: FormData): Promi
+   const parsed = parseContentForm(fd);
+   if (!parsed.ok) return { errors: parsed.errors, values, nonce: crypto.randomUUID() };
+   try {
++    const bad = await playableSourceErrors(getDb(), id, parsed.data.sources);
++    if (Object.keys(bad).length) return { errors: bad, values, nonce: crypto.randomUUID() };
+     await updateContent(getDb(), actorOf(user), id, parsed.data);
+   } catch (e) {
+     return failure(e, values);
+@@ -111,3 +117,26 @@ export async function transitionAction(
+   revalidatePath("/admin/content");
+   return { ok: true, message: DONE[action] };
+ }
++
++export async function deleteContentAction(
++  _prev: WorkflowActionState,
++  fd: FormData,
++): Promise<WorkflowActionState> {
++  const user = await requirePermission("content.delete");
++  const id = String(fd.get("id") ?? "");
++  let slug: string;
++  try {
++    ({ slug } = await deleteContent(getDb(), actorOf(user), id));
++  } catch (e) {
++    if (e instanceof PermissionError || e instanceof WorkflowError) {
++      return { ok: false, message: e.message };
++    }
++    console.error("Delete failed:", e instanceof Error ? e.message : e);
++    return { ok: false, message: "تعذّر حذف المادة الآن. حاول مرة أخرى." };
++  }
++  // The public site must stop serving the item (and its page) immediately.
++  updateTag("content");
++  revalidatePath("/admin/content");
++  revalidatePath(`/library/${encodeURIComponent(slug)}`);
++  redirect("/admin/content?deleted=1"); // outside try/catch: redirect() throws
++}
+diff --git a/src/app/admin/(panel)/content/page.tsx b/src/app/admin/(panel)/content/page.tsx
+index 5da8444..395f061 100644
+--- a/src/app/admin/(panel)/content/page.tsx
++++ b/src/app/admin/(panel)/content/page.tsx
+@@ -49,6 +49,14 @@ export default async function ContentListPage({ searchParams }: Props) {
+ 
+   return (
+     <>
++      {first(raw.deleted) === "1" && (
++        <p
++          role="status"
++          className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900"
++        >
++          حُذفت المادة نهائيًا.
++        </p>
++      )}
+       <div className="flex flex-wrap items-center justify-between gap-3">
+         <h1 className="text-2xl font-bold">المواد العلمية</h1>
+         {hasPermission(user, "content.create") && (
+diff --git a/src/components/ContentDetailView.tsx b/src/components/ContentDetailView.tsx
+index 8155974..d5ed936 100644
+--- a/src/components/ContentDetailView.tsx
++++ b/src/components/ContentDetailView.tsx
+@@ -2,6 +2,8 @@ import Link from "next/link";
+ import { Calendar, Clock, ExternalLink, User } from "lucide-react";
+ import type { ContentDetail } from "@/lib/content/queries";
+ import { ContentGrid } from "@/components/ContentGrid";
++import { MediaPlayer } from "@/components/MediaPlayer";
++import { resolvePlayer } from "@/lib/media";
+ import {
+   formatDate,
+   formatDuration,
+@@ -19,6 +21,15 @@ export function ContentDetailView({ item }: { item: ContentDetail }) {
+   const thumb = safeHttpUrl(item.thumbnailUrl);
+   const downloadAllowed =
+     item.permissionStatus === "granted" || item.permissionStatus === "public_domain";
++  // Sources that can be played inside the page (the primary one first). The full list of
++  // sources, including these, still appears under "المصادر" as plain links.
++  const players = item.sources
++    .flatMap((src) => {
++      const player = resolvePlayer(src.url, src.kind);
++      return player ? [{ src, player }] : [];
++    })
++    .sort((a, b) => Number(b.src.isPrimary) - Number(a.src.isPrimary));
++  const hasVideo = players.some((p) => p.player.type !== "audio");
+   const chip =
+     "rounded-full border border-border px-3 py-1 text-sm hover:border-accent hover:text-accent";
+ 
+@@ -61,7 +72,22 @@ export function ContentDetailView({ item }: { item: ContentDetail }) {
+           )}
+         </ul>
+ 
+-        {thumb && (
++        {players.length > 0 && (
++          <section className="mt-6 space-y-4" aria-label="المشغّل">
++            {players.map(({ src, player }) => (
++              <figure key={src.id}>
++                <MediaPlayer player={player} title={src.sourceName ?? item.title} poster={thumb} />
++                {players.length > 1 && (
++                  <figcaption className="mt-1 text-sm text-muted-foreground">
++                    {src.sourceName ?? SOURCE_KIND_LABELS[src.kind] ?? src.kind}
++                  </figcaption>
++                )}
++              </figure>
++            ))}
++          </section>
++        )}
++
++        {thumb && !hasVideo && (
+           // eslint-disable-next-line @next/next/no-img-element
+           <img
+             src={thumb}
+diff --git a/src/components/ContentForm.tsx b/src/components/ContentForm.tsx
+index 362e37d..8287715 100644
+--- a/src/components/ContentForm.tsx
++++ b/src/components/ContentForm.tsx
+@@ -266,6 +266,11 @@ export function ContentForm({
+           <p className="text-sm text-muted-foreground">
+             روابط خارجية فقط. لا يُرفع أي محتوى من مواقع أخرى دون التحقق من الإذن وشروط المنصة.
+           </p>
++          <p className="text-sm text-muted-foreground">
++            للفيديو والصوت: اختر نوع المصدر «فيديو» أو «صوت» وألصق رابط YouTube أو Vimeo، أو رابطًا
++            مباشرًا لملف (mp4 / webm للفيديو، mp3 / m4a / ogg للصوت) يبدأ بـ https://. سيُشغَّل داخل
++            صفحة المادة، ويبقى رابط المصدر ظاهرًا في قسم «المصادر».
++          </p>
+           <ul className="space-y-3">
+             {Array.from({ length: sourceRows }, (_, i) => (
+               <li
+diff --git a/src/components/DeleteContentButton.tsx b/src/components/DeleteContentButton.tsx
+new file mode 100644
+index 0000000..47683f5
+--- /dev/null
++++ b/src/components/DeleteContentButton.tsx
+@@ -0,0 +1,69 @@
++"use client";
++
++import { useActionState, useRef } from "react";
++import { deleteContentAction, type WorkflowActionState } from "@/app/admin/(panel)/content/actions";
++
++/** Permanent deletion behind a confirmation dialog (native <dialog>: focus-trapped, Esc closes). */
++export function DeleteContentButton({ id, title }: { id: string; title: string }) {
++  const dialog = useRef<HTMLDialogElement>(null);
++  const [state, action, pending] = useActionState<WorkflowActionState, FormData>(
++    deleteContentAction,
++    {},
++  );
++  return (
++    <>
++      <button
++        type="button"
++        onClick={() => dialog.current?.showModal()}
++        className="rounded-md border border-red-300 px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-50"
++      >
++        حذف المادة نهائيًا
++      </button>
++
++      <dialog
++        ref={dialog}
++        aria-labelledby={`del-title-${id}`}
++        className="m-auto w-[min(28rem,calc(100vw-2rem))] rounded-lg border border-border bg-background p-6 text-foreground backdrop:bg-black/40"
++      >
++        <form action={action} className="space-y-4">
++          <input type="hidden" name="id" value={id} />
++          <h2 id={`del-title-${id}`} className="text-lg font-bold">
++            حذف المادة نهائيًا؟
++          </h2>
++          <p className="text-sm">
++            ستُحذف المادة «{title}» من الموقع ومن قاعدة البيانات، مع مصادرها وتصنيفاتها ووسومها
++            وروابط المواد ذات الصلة. <strong>لا يمكن التراجع عن هذا الإجراء.</strong>
++          </p>
++          <p className="text-sm text-muted-foreground">
++            إن أردت إخفاءها فقط مع الاحتفاظ بها، فاستخدم «إلغاء النشر» أو «أرشفة» بدل الحذف.
++          </p>
++          {state.message && !state.ok && (
++            <p
++              role="alert"
++              className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
++            >
++              {state.message}
++            </p>
++          )}
++          <div className="flex flex-wrap justify-end gap-2">
++            <button
++              type="button"
++              onClick={() => dialog.current?.close()}
++              disabled={pending}
++              className="rounded-md border border-border px-4 py-2 text-sm font-semibold hover:bg-muted disabled:opacity-60"
++            >
++              إلغاء
++            </button>
++            <button
++              type="submit"
++              disabled={pending}
++              className="rounded-md bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:opacity-60"
++            >
++              {pending ? "جارٍ الحذف…" : "نعم، احذف نهائيًا"}
++            </button>
++          </div>
++        </form>
++      </dialog>
++    </>
++  );
++}
+diff --git a/src/components/MediaPlayer.tsx b/src/components/MediaPlayer.tsx
+new file mode 100644
+index 0000000..fdfa192
+--- /dev/null
++++ b/src/components/MediaPlayer.tsx
+@@ -0,0 +1,51 @@
++import type { Player } from "@/lib/media";
++
++/**
++ * Plays one source inside the page. Server component: native <video>/<audio> and
++ * iframes need no client JavaScript.
++ */
++export function MediaPlayer({
++  player,
++  title,
++  poster,
++}: {
++  player: Player;
++  title: string;
++  poster?: string | null;
++}) {
++  if (player.type === "iframe") {
++    return (
++      <div className="aspect-video w-full overflow-hidden rounded-md border border-border bg-black">
++        <iframe
++          src={player.src}
++          title={title}
++          loading="lazy"
++          allow="encrypted-media; picture-in-picture; fullscreen"
++          allowFullScreen
++          referrerPolicy="strict-origin-when-cross-origin"
++          className="h-full w-full border-0"
++        />
++      </div>
++    );
++  }
++  if (player.type === "video") {
++    return (
++      <video
++        controls
++        playsInline
++        preload="metadata"
++        poster={poster ?? undefined}
++        className="aspect-video w-full rounded-md border border-border bg-black"
++      >
++        <source src={player.src} />
++        متصفحك لا يدعم تشغيل الفيديو. يمكنك فتح الملف من قسم «المصادر».
++      </video>
++    );
++  }
++  return (
++    <audio controls preload="metadata" className="w-full">
++      <source src={player.src} />
++      متصفحك لا يدعم تشغيل الصوت. يمكنك فتح الملف من قسم «المصادر».
++    </audio>
++  );
++}
+diff --git a/src/lib/admin/content-input.ts b/src/lib/admin/content-input.ts
+index d07adb4..ef87817 100644
+--- a/src/lib/admin/content-input.ts
++++ b/src/lib/admin/content-input.ts
+@@ -1,4 +1,5 @@
+ import { safeHttpUrl } from "@/lib/format";
++import { resolvePlayer } from "@/lib/media";
+ import { parseDuration, slugify, SLUG_RE } from "./slug";
+ 
+ import { MAX_SOURCES, PERMISSION_STATUSES, SOURCE_KINDS } from "./content-constants";
+@@ -160,3 +161,25 @@ export function parseContentForm(fd: FormData): ParseResult {
+     },
+   };
+ }
++
++/**
++ * A source the administrator marks as video/audio must really play inside the page.
++ * Sources that are ALREADY saved with the same kind and URL are accepted unchanged, so items
++ * created before this rule stay editable; only new or changed video/audio links are checked.
++ */
++export function unplayableSourceErrors(
++  sources: SourceInput[],
++  existing: { kind: string; url: string }[] = [],
++): Record<string, string> {
++  const errors: Record<string, string> = {};
++  sources.forEach((src, i) => {
++    if (src.kind !== "video" && src.kind !== "audio") return;
++    if (resolvePlayer(src.url, src.kind)) return;
++    if (existing.some((e) => e.kind === src.kind && e.url === src.url)) return;
++    errors[`sources.${i}.url`] =
++      src.kind === "video"
++        ? "هذا الرابط لا يمكن تشغيله داخل الموقع. استخدم رابط YouTube أو Vimeo (https)، أو رابط ملف مباشر بصيغة mp4 أو webm، أو غيّر نوع المصدر إلى «رابط»."
++        : "هذا الرابط لا يمكن تشغيله داخل الموقع. استخدم رابط ملف صوتي مباشر (https) بصيغة mp3 أو m4a أو ogg، أو رابط YouTube أو Vimeo، أو غيّر نوع المصدر إلى «رابط».";
++  });
++  return errors;
++}
+diff --git a/src/lib/admin/content.ts b/src/lib/admin/content.ts
+index 20fa8be..0709858 100644
+--- a/src/lib/admin/content.ts
++++ b/src/lib/admin/content.ts
+@@ -11,7 +11,7 @@ import type { PermissionKey } from "@/lib/auth/permissions";
+ import * as s from "@/lib/db/schema";
+ import type { AnyDb } from "@/lib/db/types";
+ import { writeAudit } from "./audit";
+-import type { ContentData, SourceInput } from "./content-input";
++import { unplayableSourceErrors, type ContentData, type SourceInput } from "./content-input";
+ import { slugify } from "./slug";
+ import { hasPermission, workflowState, type Actor, type Transition } from "./workflow";
+ 
+@@ -304,6 +304,48 @@ export async function transition(db: AnyDb, actor: Actor, id: string, action: Tr
+   });
+ }
+ 
++/** Validation errors for video/audio sources that cannot play (see unplayableSourceErrors). */
++export async function playableSourceErrors(
++  db: AnyDb,
++  itemId: string | undefined,
++  sources: SourceInput[],
++): Promise<Record<string, string>> {
++  const existing = itemId
++    ? await db
++        .select({ kind: s.contentSources.kind, url: s.contentSources.url })
++        .from(s.contentSources)
++        .where(eq(s.contentSources.contentItemId, itemId))
++    : [];
++  return unplayableSourceErrors(
++    sources,
++    existing.flatMap((e) => (e.url ? [{ kind: e.kind, url: e.url }] : [])),
++  );
++}
++
++/* ───────────── Permanent deletion ───────────── */
++
++/**
++ * Deletes one item for good, in ANY state (published, draft, archived). Its sources,
++ * category/tag links and relations go with it (ON DELETE CASCADE). Nothing else is
++ * touched. The audit entry keeps the title and slug, since the row itself is gone.
++ */
++export async function deleteContent(db: AnyDb, actor: Actor, id: string) {
++  assertCan(actor, "content.delete", "حذف المواد نهائيًا متاح للمسؤول الرئيسي فقط.");
++  return db.transaction(async (tx) => {
++    const [item] = await tx.select().from(s.contentItems).where(eq(s.contentItems.id, id));
++    if (!item) throw new WorkflowError("المادة غير موجودة أو حُذفت من قبل.");
++    await tx.delete(s.contentItems).where(eq(s.contentItems.id, id));
++    await writeAudit(tx, {
++      actorId: actor.id,
++      action: "content.delete",
++      entityType: "content_item",
++      entityId: id,
++      metadata: { title: item.title, slug: item.slug, state: workflowState(item) },
++    });
++    return { id, slug: item.slug };
++  });
++}
++
+ /* ───────────── Admin reads ───────────── */
+ 
+ export type AdminContentRow = {
+diff --git a/src/lib/auth/permissions.ts b/src/lib/auth/permissions.ts
+index e39dc74..c90a80a 100644
+--- a/src/lib/auth/permissions.ts
++++ b/src/lib/auth/permissions.ts
+@@ -10,6 +10,7 @@ export const PERMISSIONS = {
+   "content.review": "Approve content or send it back for changes",
+   "content.publish": "Publish and unpublish approved content",
+   "content.archive": "Archive content",
++  "content.delete": "Permanently delete content items",
+   "taxonomy.manage": "Manage categories, tags and content types",
+   "pages.edit": "Edit static pages and site information",
+   "participations.manage": "Manage scholarly participations",
+diff --git a/src/lib/media.ts b/src/lib/media.ts
+new file mode 100644
+index 0000000..b8183c7
+--- /dev/null
++++ b/src/lib/media.ts
+@@ -0,0 +1,88 @@
++/**
++ * Turns a source URL into something the public page can play INSIDE the page.
++ *
++ * Only a small allow-list is ever embedded (YouTube, Vimeo, and direct media files over
++ * HTTPS), so an administrator can never make the site load an arbitrary third-party page
++ * in a frame. Anything else returns null and stays a plain link.
++ */
++export type Player =
++  | { type: "iframe"; provider: "youtube" | "vimeo"; src: string }
++  | { type: "video"; src: string }
++  | { type: "audio"; src: string };
++
++const VIDEO_FILE = /\.(mp4|m4v|webm|ogv)$/i;
++const AUDIO_FILE = /\.(mp3|m4a|aac|ogg|oga|opus|wav)$/i;
++const YOUTUBE_HOSTS = new Set([
++  "youtube.com",
++  "www.youtube.com",
++  "m.youtube.com",
++  "music.youtube.com",
++  "youtube-nocookie.com",
++  "www.youtube-nocookie.com",
++]);
++const YT_ID = /^[A-Za-z0-9_-]{11}$/;
++
++/** "90", "90s", "1m30s", "1h2m3s" -> seconds (0 when it cannot be read). */
++function startSeconds(raw: string | null): number {
++  if (!raw) return 0;
++  if (/^\d+$/.test(raw)) return Math.min(Number(raw), 86_400);
++  const m = raw.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/i);
++  if (!m) return 0;
++  const total = Number(m[1] ?? 0) * 3600 + Number(m[2] ?? 0) * 60 + Number(m[3] ?? 0);
++  return Math.min(total, 86_400);
++}
++
++function youtube(u: URL): Player | null {
++  const host = u.hostname.toLowerCase();
++  let id: string | null = null;
++  if (host === "youtu.be") id = u.pathname.split("/")[1] ?? null;
++  else if (YOUTUBE_HOSTS.has(host)) {
++    if (u.pathname === "/watch") id = u.searchParams.get("v");
++    else id = u.pathname.match(/^\/(?:embed|shorts|live|v)\/([^/?#]+)/)?.[1] ?? null;
++  } else return null;
++  if (!id || !YT_ID.test(id)) return null;
++  const start = startSeconds(u.searchParams.get("t") ?? u.searchParams.get("start"));
++  const qs = start > 0 ? `?start=${start}` : "";
++  return {
++    type: "iframe",
++    provider: "youtube",
++    src: `https://www.youtube-nocookie.com/embed/${id}${qs}`,
++  };
++}
++
++function vimeo(u: URL): Player | null {
++  const host = u.hostname.toLowerCase();
++  let id: string | null = null;
++  let hash: string | null = null;
++  if (host === "player.vimeo.com") {
++    id = u.pathname.match(/^\/video\/(\d+)\/?$/)?.[1] ?? null;
++    hash = u.searchParams.get("h");
++  } else if (host === "vimeo.com" || host === "www.vimeo.com") {
++    const m = u.pathname.match(/(?:^|\/)(\d{5,})(?:\/([0-9a-f]{6,}))?\/?$/i);
++    id = m?.[1] ?? null;
++    hash = m?.[2] ?? u.searchParams.get("h");
++  } else return null;
++  if (!id) return null;
++  const h = hash && /^[0-9a-f]{6,}$/i.test(hash) ? `?h=${hash}` : "";
++  return { type: "iframe", provider: "vimeo", src: `https://player.vimeo.com/video/${id}${h}` };
++}
++
++/**
++ * @param kind the administrator's choice ("file" is for downloads such as PDFs, never played).
++ */
++export function resolvePlayer(url: string | null | undefined, kind?: string): Player | null {
++  if (!url || kind === "file") return null;
++  let u: URL;
++  try {
++    u = new URL(url);
++  } catch {
++    return null;
++  }
++  // HTTPS only: browsers block plain-HTTP media on an HTTPS page, so it would never play.
++  if (u.protocol !== "https:") return null;
++  const fromHost = youtube(u) ?? vimeo(u);
++  if (fromHost) return fromHost;
++  if (VIDEO_FILE.test(u.pathname)) return { type: "video", src: u.toString() };
++  if (AUDIO_FILE.test(u.pathname)) return { type: "audio", src: u.toString() };
++  return null;
++}
+diff --git a/tests/auth.test.ts b/tests/auth.test.ts
+index 7bae0ae..dada356 100644
+--- a/tests/auth.test.ts
++++ b/tests/auth.test.ts
+@@ -135,7 +135,6 @@ describe("administrator creation", () => {
+   });
+ });
+ 
+-
+ describe("sign-in", () => {
+   beforeAll(async () => {
+     await createAdminUser(ctx.db, {
+@@ -179,7 +178,7 @@ describe("sign-in", () => {
+   it("gives super admin every permission", async () => {
+     const r = await login("admin@example.org", GOOD);
+     if (!r.ok) throw new Error("login failed");
+-    expect((await getSessionUser(ctx.db, r.token))?.permissions).toHaveLength(14);
++    expect((await getSessionUser(ctx.db, r.token))?.permissions).toHaveLength(15);
+   });
+   it("stores only a hash of the session token", async () => {
+     const r = await login("editor@example.org", GOOD);
+@@ -329,4 +328,4 @@ describe("admin dashboard statistics", () => {
+     expect(st.adminUsers).toBeGreaterThanOrEqual(2);
+     expect(st.recent.length).toBeLessThanOrEqual(10);
+   });
+-});
+\ No newline at end of file
++});
+diff --git a/tests/content-delete.test.ts b/tests/content-delete.test.ts
+new file mode 100644
+index 0000000..8795f29
+--- /dev/null
++++ b/tests/content-delete.test.ts
+@@ -0,0 +1,179 @@
++import { afterAll, beforeAll, describe, expect, it } from "vitest";
++import { eq } from "drizzle-orm";
++import { createTestDb } from "./helpers/db";
++import { seedReferenceData } from "@/lib/db/seed-reference";
++import * as s from "@/lib/db/schema";
++import { ROLES, type RoleKey } from "@/lib/auth/permissions";
++import { getContentBySlug, listContent } from "@/lib/content/queries";
++import type { ContentData } from "@/lib/admin/content-input";
++import {
++  PermissionError,
++  WorkflowError,
++  createContent,
++  deleteContent,
++  transition,
++  type Actor,
++} from "@/lib/admin/content";
++
++let ctx: Awaited<ReturnType<typeof createTestDb>>;
++let typeId: string;
++let catId: string;
++const actors = {} as Record<RoleKey, Actor>;
++
++const data = (over: Partial<ContentData> = {}): ContentData => ({
++  title: "مادة للحذف",
++  contentTypeId: typeId,
++  summary: null,
++  description: null,
++  speakerName: null,
++  recordedAt: null,
++  durationSeconds: null,
++  thumbnailUrl: null,
++  copyrightNotice: null,
++  permissionStatus: "unknown",
++  reuseRestrictions: null,
++  isFeatured: false,
++  categoryIds: [],
++  tags: [],
++  relatedSlugs: [],
++  sources: [],
++  ...over,
++});
++
++beforeAll(async () => {
++  ctx = await createTestDb();
++  await seedReferenceData(ctx.db);
++  typeId = (await ctx.db.select().from(s.contentTypes))[0].id;
++  for (const key of Object.keys(ROLES) as RoleKey[]) {
++    const [role] = await ctx.db.select().from(s.roles).where(eq(s.roles.key, key));
++    const [u] = await ctx.db
++      .insert(s.users)
++      .values({ email: `${key}@example.org`, name: key, roleId: role.id })
++      .returning({ id: s.users.id });
++    actors[key] = { id: u.id, permissions: ROLES[key].permissions };
++  }
++  catId = (await ctx.db.insert(s.categories).values({ slug: "c", name: "تصنيف" }).returning())[0]
++    .id;
++});
++afterAll(async () => ctx.client.close());
++
++async function publishedItem(title: string, over: Partial<ContentData> = {}) {
++  const row = await createContent(ctx.db, actors.super_admin, data({ title, ...over }));
++  await transition(ctx.db, actors.super_admin, row.id, "publish");
++  return row;
++}
++
++describe("permanent deletion", () => {
++  it("removes a PUBLISHED item and its page disappears from the public site", async () => {
++    const row = await publishedItem("منشورة", {
++      categoryIds: [catId],
++      tags: ["وسم"],
++      sources: [
++        {
++          kind: "video",
++          url: "https://youtu.be/dQw4w9WgXcQ",
++          sourceName: "قناة",
++          isPrimary: true,
++          isDownloadable: false,
++        },
++      ],
++    });
++    expect(await getContentBySlug(ctx.db, row.slug)).not.toBeNull();
++    const before = (await listContent(ctx.db, { pageSize: 100 })).total;
++
++    await deleteContent(ctx.db, actors.super_admin, row.id);
++
++    expect(await getContentBySlug(ctx.db, row.slug)).toBeNull();
++    expect((await listContent(ctx.db, { pageSize: 100 })).total).toBe(before - 1);
++    expect(await ctx.db.select().from(s.contentItems).where(eq(s.contentItems.id, row.id))).toEqual(
++      [],
++    );
++  });
++
++  it("takes its sources and category/tag links with it, but keeps categories and tags", async () => {
++    const row = await publishedItem("روابط", {
++      categoryIds: [catId],
++      tags: ["باقٍ"],
++      sources: [
++        {
++          kind: "video",
++          url: "https://youtu.be/dQw4w9WgXcQ",
++          sourceName: null,
++          isPrimary: true,
++          isDownloadable: false,
++        },
++      ],
++    });
++    await deleteContent(ctx.db, actors.super_admin, row.id);
++    expect(
++      await ctx.db
++        .select()
++        .from(s.contentSources)
++        .where(eq(s.contentSources.contentItemId, row.id)),
++    ).toEqual([]);
++    expect(
++      await ctx.db
++        .select()
++        .from(s.contentCategories)
++        .where(eq(s.contentCategories.contentItemId, row.id)),
++    ).toEqual([]);
++    expect(
++      await ctx.db.select().from(s.contentTags).where(eq(s.contentTags.contentItemId, row.id)),
++    ).toEqual([]);
++    expect((await ctx.db.select().from(s.categories)).length).toBeGreaterThan(0);
++    expect((await ctx.db.select().from(s.tags)).some((t) => t.name === "باقٍ")).toBe(true);
++  });
++
++  it("leaves other items (and links pointing at them) intact", async () => {
++    const keep = await publishedItem("باقية");
++    const gone = await publishedItem("محذوفة", { relatedSlugs: [keep.slug] });
++    await deleteContent(ctx.db, actors.super_admin, gone.id);
++    const still = await getContentBySlug(ctx.db, keep.slug);
++    expect(still?.title).toBe("باقية");
++  });
++
++  it("works for drafts and archived items too", async () => {
++    const draft = await createContent(ctx.db, actors.super_admin, data({ title: "مسودة" }));
++    await deleteContent(ctx.db, actors.super_admin, draft.id);
++    const arch = await publishedItem("مؤرشفة");
++    await transition(ctx.db, actors.super_admin, arch.id, "archive");
++    await deleteContent(ctx.db, actors.super_admin, arch.id);
++    expect(
++      await ctx.db.select().from(s.contentItems).where(eq(s.contentItems.id, arch.id)),
++    ).toEqual([]);
++  });
++
++  it("writes an audit entry with the title and no sensitive data", async () => {
++    const row = await publishedItem("سجل الحذف");
++    await deleteContent(ctx.db, actors.super_admin, row.id);
++    const [log] = await ctx.db.select().from(s.auditLogs).where(eq(s.auditLogs.entityId, row.id));
++    const entries = (
++      await ctx.db.select().from(s.auditLogs).where(eq(s.auditLogs.entityId, row.id))
++    ).filter((l) => l.action === "content.delete");
++    expect(log).toBeDefined();
++    expect(entries).toHaveLength(1);
++    expect(entries[0].actorId).toBe(actors.super_admin.id);
++    expect(entries[0].metadata).toEqual({ title: "سجل الحذف", slug: row.slug, state: "published" });
++  });
++
++  it("is refused for everyone except the main administrator, and nothing is deleted", async () => {
++    const row = await publishedItem("محمية");
++    for (const key of ["content_manager", "editor", "reviewer"] as const) {
++      await expect(deleteContent(ctx.db, actors[key], row.id), key).rejects.toBeInstanceOf(
++        PermissionError,
++      );
++    }
++    expect(await getContentBySlug(ctx.db, row.slug)).not.toBeNull();
++  });
++
++  it("reports a missing item clearly, and a second delete does nothing", async () => {
++    const row = await publishedItem("مرتين");
++    await deleteContent(ctx.db, actors.super_admin, row.id);
++    await expect(deleteContent(ctx.db, actors.super_admin, row.id)).rejects.toBeInstanceOf(
++      WorkflowError,
++    );
++    await expect(
++      deleteContent(ctx.db, actors.super_admin, "00000000-0000-4000-8000-000000000000"),
++    ).rejects.toBeInstanceOf(WorkflowError);
++  });
++});
+diff --git a/tests/media.test.ts b/tests/media.test.ts
+new file mode 100644
+index 0000000..4548392
+--- /dev/null
++++ b/tests/media.test.ts
+@@ -0,0 +1,120 @@
++import { describe, expect, it } from "vitest";
++import { resolvePlayer } from "@/lib/media";
++import { unplayableSourceErrors } from "@/lib/admin/content-input";
++
++const yt = (id: string, qs = "") => ({
++  type: "iframe",
++  provider: "youtube",
++  src: `https://www.youtube-nocookie.com/embed/${id}${qs}`,
++});
++
++describe("resolvePlayer: what can play inside the page", () => {
++  it("understands every common YouTube URL shape", () => {
++    const id = "dQw4w9WgXcQ";
++    for (const url of [
++      `https://www.youtube.com/watch?v=${id}`,
++      `https://youtube.com/watch?v=${id}&list=PL1`,
++      `https://m.youtube.com/watch?v=${id}`,
++      `https://youtu.be/${id}`,
++      `https://www.youtube.com/embed/${id}`,
++      `https://www.youtube.com/shorts/${id}`,
++      `https://www.youtube.com/live/${id}`,
++      `https://www.youtube-nocookie.com/embed/${id}`,
++    ]) {
++      expect(resolvePlayer(url, "video"), url).toEqual(yt(id));
++    }
++  });
++  it("keeps a start time, in seconds", () => {
++    const id = "dQw4w9WgXcQ";
++    expect(resolvePlayer(`https://youtu.be/${id}?t=90`)).toEqual(yt(id, "?start=90"));
++    expect(resolvePlayer(`https://www.youtube.com/watch?v=${id}&t=1m30s`)).toEqual(
++      yt(id, "?start=90"),
++    );
++    expect(resolvePlayer(`https://youtu.be/${id}?t=garbage`)).toEqual(yt(id));
++  });
++  it("understands Vimeo, including unlisted videos with a hash", () => {
++    const base = { type: "iframe", provider: "vimeo" };
++    expect(resolvePlayer("https://vimeo.com/123456789")).toEqual({
++      ...base,
++      src: "https://player.vimeo.com/video/123456789",
++    });
++    expect(resolvePlayer("https://vimeo.com/123456789/abcdef1234")).toEqual({
++      ...base,
++      src: "https://player.vimeo.com/video/123456789?h=abcdef1234",
++    });
++    expect(resolvePlayer("https://player.vimeo.com/video/123456789?h=abcdef1234")).toEqual({
++      ...base,
++      src: "https://player.vimeo.com/video/123456789?h=abcdef1234",
++    });
++  });
++  it("plays direct video and audio files over HTTPS", () => {
++    expect(resolvePlayer("https://cdn.example.org/a/lesson.mp4?token=1", "video")).toEqual({
++      type: "video",
++      src: "https://cdn.example.org/a/lesson.mp4?token=1",
++    });
++    expect(resolvePlayer("https://cdn.example.org/lesson.WEBM")?.type).toBe("video");
++    expect(resolvePlayer("https://cdn.example.org/lesson.mp3", "audio")?.type).toBe("audio");
++    expect(resolvePlayer("https://cdn.example.org/lesson.m4a")?.type).toBe("audio");
++  });
++  it("never embeds anything outside the allow-list", () => {
++    for (const url of [
++      "http://cdn.example.org/lesson.mp4", // plain HTTP: blocked by browsers on an HTTPS page
++      "https://example.org/some-page", // arbitrary page: must stay a link
++      "https://www.youtube.com.evil.example/watch?v=dQw4w9WgXcQ", // look-alike host
++      "https://evil.example/https://www.youtube.com/watch?v=dQw4w9WgXcQ",
++      "https://www.youtube.com/watch?v=short", // not an 11-character id
++      "https://www.youtube.com/watch?v=dQw4w9WgXcQ%22onload%3D", // injection attempt
++      "https://vimeo.com.evil.example/123456789",
++      "javascript:alert(1)",
++      "data:text/html,<script>1</script>",
++      "not a url",
++      "",
++    ]) {
++      expect(resolvePlayer(url, "video"), url).toBeNull();
++    }
++    expect(resolvePlayer(null)).toBeNull();
++  });
++  it("never plays a downloadable file source", () => {
++    expect(resolvePlayer("https://cdn.example.org/lesson.mp4", "file")).toBeNull();
++  });
++});
++
++describe("a source marked video/audio must really play (new or changed links)", () => {
++  const src = (kind: "video" | "audio" | "external_link" | "file", url: string) => ({
++    kind,
++    url,
++    sourceName: null,
++    isPrimary: true,
++    isDownloadable: false,
++  });
++  it("accepts playable video and audio sources", () => {
++    expect(unplayableSourceErrors([src("video", "https://youtu.be/dQw4w9WgXcQ")])).toEqual({});
++    expect(unplayableSourceErrors([src("video", "https://cdn.example.org/a.mp4")])).toEqual({});
++    expect(unplayableSourceErrors([src("audio", "https://cdn.example.org/a.mp3")])).toEqual({});
++  });
++  it("rejects video/audio links that cannot be played, naming the field", () => {
++    const errs = unplayableSourceErrors([
++      src("video", "https://example.org/watch/123"),
++      src("video", "https://youtu.be/dQw4w9WgXcQ"),
++      src("audio", "http://cdn.example.org/a.mp3"),
++    ]);
++    expect(Object.keys(errs)).toEqual(["sources.0.url", "sources.2.url"]);
++    expect(errs["sources.0.url"]).toMatch(/لا يمكن تشغيله/);
++  });
++  it("still allows any https page as a plain link or a file", () => {
++    expect(unplayableSourceErrors([src("external_link", "https://example.org/watch/123")])).toEqual(
++      {},
++    );
++    expect(unplayableSourceErrors([src("file", "https://example.org/book.pdf")])).toEqual({});
++  });
++  it("keeps items saved before this rule editable (same kind and URL already stored)", () => {
++    const old = [{ kind: "video", url: "https://example.org/old-video-page" }];
++    expect(
++      unplayableSourceErrors([src("video", "https://example.org/old-video-page")], old),
++    ).toEqual({});
++    // ...but a NEW unplayable link on the same item is still refused
++    expect(
++      Object.keys(unplayableSourceErrors([src("video", "https://example.org/other")], old)),
++    ).toEqual(["sources.0.url"]);
++  });
++});
+diff --git a/tests/permissions.test.ts b/tests/permissions.test.ts
+index 7a7b628..61ccaf3 100644
+--- a/tests/permissions.test.ts
++++ b/tests/permissions.test.ts
+@@ -31,6 +31,12 @@ describe("role permissions", () => {
+       expect(holders).toEqual(["super_admin"]);
+     }
+   });
++  it("only super_admin may permanently delete content", () => {
++    const holders = Object.keys(ROLES).filter((r) =>
++      roleHasPermission(r as keyof typeof ROLES, "content.delete"),
++    );
++    expect(holders).toEqual(["super_admin"]);
++  });
+   it("every role permission exists in the catalogue", () => {
+     for (const r of Object.values(ROLES)) {
+       for (const p of r.permissions) expect(PERMISSIONS).toHaveProperty(p);
+diff --git a/tests/schema.test.ts b/tests/schema.test.ts
+index b5f6109..0a0535b 100644
+--- a/tests/schema.test.ts
++++ b/tests/schema.test.ts
+@@ -35,7 +35,7 @@ describe("reference seed", () => {
+   it("is idempotent", async () => {
+     await seedReferenceData(ctx.db);
+     expect((await ctx.db.select().from(s.roles)).length).toBe(4);
+-    expect((await ctx.db.select().from(s.permissions)).length).toBe(14);
++    expect((await ctx.db.select().from(s.permissions)).length).toBe(15);
+   });
+   it("maps super_admin to all permissions and editor to three", async () => {
+     const count = async (key: string) =>
+@@ -46,7 +46,7 @@ describe("reference seed", () => {
+           .innerJoin(s.roles, eq(s.roles.id, s.rolePermissions.roleId))
+           .where(eq(s.roles.key, key))
+       ).length;
+-    expect(await count("super_admin")).toBe(14);
++    expect(await count("super_admin")).toBe(15);
+     expect(await count("editor")).toBe(3);
+   });
+   it("creates static pages as unpublished and empty", async () => {
+@@ -258,14 +258,12 @@ describe("audit log and settings", () => {
+       .insert(s.users)
+       .values({ email: "audit@example.org", name: "m", roleId: role.id })
+       .returning();
+-    await ctx.db
+-      .insert(s.auditLogs)
+-      .values({
+-        actorId: u.id,
+-        action: "content.publish",
+-        entityType: "content_item",
+-        entityId: "1",
+-      });
++    await ctx.db.insert(s.auditLogs).values({
++      actorId: u.id,
++      action: "content.publish",
++      entityType: "content_item",
++      entityId: "1",
++    });
+     await ctx.db.delete(s.users).where(eq(s.users.id, u.id));
+     const rows = await ctx.db
+       .select()

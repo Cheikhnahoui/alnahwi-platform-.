@@ -35,7 +35,7 @@ describe("reference seed", () => {
   it("is idempotent", async () => {
     await seedReferenceData(ctx.db);
     expect((await ctx.db.select().from(s.roles)).length).toBe(4);
-    expect((await ctx.db.select().from(s.permissions)).length).toBe(14);
+    expect((await ctx.db.select().from(s.permissions)).length).toBe(15);
   });
   it("maps super_admin to all permissions and editor to three", async () => {
     const count = async (key: string) =>
@@ -46,7 +46,7 @@ describe("reference seed", () => {
           .innerJoin(s.roles, eq(s.roles.id, s.rolePermissions.roleId))
           .where(eq(s.roles.key, key))
       ).length;
-    expect(await count("super_admin")).toBe(14);
+    expect(await count("super_admin")).toBe(15);
     expect(await count("editor")).toBe(3);
   });
   it("creates static pages as unpublished and empty", async () => {
@@ -258,14 +258,12 @@ describe("audit log and settings", () => {
       .insert(s.users)
       .values({ email: "audit@example.org", name: "m", roleId: role.id })
       .returning();
-    await ctx.db
-      .insert(s.auditLogs)
-      .values({
-        actorId: u.id,
-        action: "content.publish",
-        entityType: "content_item",
-        entityId: "1",
-      });
+    await ctx.db.insert(s.auditLogs).values({
+      actorId: u.id,
+      action: "content.publish",
+      entityType: "content_item",
+      entityId: "1",
+    });
     await ctx.db.delete(s.users).where(eq(s.users.id, u.id));
     const rows = await ctx.db
       .select()

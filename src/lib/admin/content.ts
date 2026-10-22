@@ -11,7 +11,7 @@ import type { PermissionKey } from "@/lib/auth/permissions";
 import * as s from "@/lib/db/schema";
 import type { AnyDb } from "@/lib/db/types";
 import { writeAudit } from "./audit";
-import type { ContentData, SourceInput } from "./content-input";
+import { unplayableSourceErrors, type ContentData, type SourceInput } from "./content-input";
 import { slugify } from "./slug";
 import { hasPermission, workflowState, type Actor, type Transition } from "./workflow";
 
@@ -299,6 +299,48 @@ export async function transition(db: AnyDb, actor: Actor, id: string, action: Tr
       entityType: "content_item",
       entityId: id,
       metadata,
+    });
+    return { id, slug: item.slug };
+  });
+}
+
+/** Validation errors for video/audio sources that cannot play (see unplayableSourceErrors). */
+export async function playableSourceErrors(
+  db: AnyDb,
+  itemId: string | undefined,
+  sources: SourceInput[],
+): Promise<Record<string, string>> {
+  const existing = itemId
+    ? await db
+        .select({ kind: s.contentSources.kind, url: s.contentSources.url })
+        .from(s.contentSources)
+        .where(eq(s.contentSources.contentItemId, itemId))
+    : [];
+  return unplayableSourceErrors(
+    sources,
+    existing.flatMap((e) => (e.url ? [{ kind: e.kind, url: e.url }] : [])),
+  );
+}
+
+/* ───────────── Permanent deletion ───────────── */
+
+/**
+ * Deletes one item for good, in ANY state (published, draft, archived). Its sources,
+ * category/tag links and relations go with it (ON DELETE CASCADE). Nothing else is
+ * touched. The audit entry keeps the title and slug, since the row itself is gone.
+ */
+export async function deleteContent(db: AnyDb, actor: Actor, id: string) {
+  assertCan(actor, "content.delete", "حذف المواد نهائيًا متاح للمسؤول الرئيسي فقط.");
+  return db.transaction(async (tx) => {
+    const [item] = await tx.select().from(s.contentItems).where(eq(s.contentItems.id, id));
+    if (!item) throw new WorkflowError("المادة غير موجودة أو حُذفت من قبل.");
+    await tx.delete(s.contentItems).where(eq(s.contentItems.id, id));
+    await writeAudit(tx, {
+      actorId: actor.id,
+      action: "content.delete",
+      entityType: "content_item",
+      entityId: id,
+      metadata: { title: item.title, slug: item.slug, state: workflowState(item) },
     });
     return { id, slug: item.slug };
   });

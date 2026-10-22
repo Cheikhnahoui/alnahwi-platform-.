@@ -12,6 +12,8 @@ import {
   ValidationError,
   WorkflowError,
   createContent,
+  deleteContent,
+  playableSourceErrors,
   transition,
   updateContent,
   type Actor,
@@ -65,6 +67,8 @@ export async function createContentAction(_prev: FormState, fd: FormData): Promi
   if (!parsed.ok) return { errors: parsed.errors, values, nonce: crypto.randomUUID() };
   let row;
   try {
+    const bad = await playableSourceErrors(getDb(), undefined, parsed.data.sources);
+    if (Object.keys(bad).length) return { errors: bad, values, nonce: crypto.randomUUID() };
     row = await createContent(getDb(), actorOf(user), parsed.data);
   } catch (e) {
     return failure(e, values);
@@ -80,6 +84,8 @@ export async function updateContentAction(_prev: FormState, fd: FormData): Promi
   const parsed = parseContentForm(fd);
   if (!parsed.ok) return { errors: parsed.errors, values, nonce: crypto.randomUUID() };
   try {
+    const bad = await playableSourceErrors(getDb(), id, parsed.data.sources);
+    if (Object.keys(bad).length) return { errors: bad, values, nonce: crypto.randomUUID() };
     await updateContent(getDb(), actorOf(user), id, parsed.data);
   } catch (e) {
     return failure(e, values);
@@ -110,4 +116,27 @@ export async function transitionAction(
   revalidatePath(`/admin/content/${id}`);
   revalidatePath("/admin/content");
   return { ok: true, message: DONE[action] };
+}
+
+export async function deleteContentAction(
+  _prev: WorkflowActionState,
+  fd: FormData,
+): Promise<WorkflowActionState> {
+  const user = await requirePermission("content.delete");
+  const id = String(fd.get("id") ?? "");
+  let slug: string;
+  try {
+    ({ slug } = await deleteContent(getDb(), actorOf(user), id));
+  } catch (e) {
+    if (e instanceof PermissionError || e instanceof WorkflowError) {
+      return { ok: false, message: e.message };
+    }
+    console.error("Delete failed:", e instanceof Error ? e.message : e);
+    return { ok: false, message: "تعذّر حذف المادة الآن. حاول مرة أخرى." };
+  }
+  // The public site must stop serving the item (and its page) immediately.
+  updateTag("content");
+  revalidatePath("/admin/content");
+  revalidatePath(`/library/${encodeURIComponent(slug)}`);
+  redirect("/admin/content?deleted=1"); // outside try/catch: redirect() throws
 }

@@ -135,7 +135,6 @@ describe("administrator creation", () => {
   });
 });
 
-
 describe("sign-in", () => {
   beforeAll(async () => {
     await createAdminUser(ctx.db, {
@@ -179,7 +178,7 @@ describe("sign-in", () => {
   it("gives super admin every permission", async () => {
     const r = await login("admin@example.org", GOOD);
     if (!r.ok) throw new Error("login failed");
-    expect((await getSessionUser(ctx.db, r.token))?.permissions).toHaveLength(14);
+    expect((await getSessionUser(ctx.db, r.token))?.permissions).toHaveLength(15);
   });
   it("stores only a hash of the session token", async () => {
     const r = await login("editor@example.org", GOOD);

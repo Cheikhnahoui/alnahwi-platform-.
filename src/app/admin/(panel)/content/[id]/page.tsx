@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ContentForm } from "@/components/ContentForm";
+import { DeleteContentButton } from "@/components/DeleteContentButton";
 import { StatusBadge } from "@/components/StatusBadge";
 import { WorkflowPanel } from "@/components/WorkflowPanel";
 import {
@@ -131,6 +132,20 @@ export default async function EditContentPage({ params, searchParams }: Props) {
               )}
             </ul>
           </section>
+          {hasPermission(user, "content.delete") && (
+            <section
+              className="rounded-md border border-red-200 p-4 text-sm"
+              aria-labelledby="h-danger"
+            >
+              <h2 id="h-danger" className="mb-2 font-bold text-red-800">
+                حذف المادة
+              </h2>
+              <p className="mb-3 text-muted-foreground">
+                يحذف المادة نهائيًا من الموقع وقاعدة البيانات، مهما كانت حالتها.
+              </p>
+              <DeleteContentButton id={item.id} title={item.title} />
+            </section>
+          )}
         </aside>
       </div>
     </>

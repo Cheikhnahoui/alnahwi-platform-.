@@ -31,6 +31,12 @@ describe("role permissions", () => {
       expect(holders).toEqual(["super_admin"]);
     }
   });
+  it("only super_admin may permanently delete content", () => {
+    const holders = Object.keys(ROLES).filter((r) =>
+      roleHasPermission(r as keyof typeof ROLES, "content.delete"),
+    );
+    expect(holders).toEqual(["super_admin"]);
+  });
   it("every role permission exists in the catalogue", () => {
     for (const r of Object.values(ROLES)) {
       for (const p of r.permissions) expect(PERMISSIONS).toHaveProperty(p);
