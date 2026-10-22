@@ -57,3 +57,19 @@ export const SOURCE_KIND_LABELS: Record<string, string> = {
   file: "ملف",
   external_link: "رابط",
 };
+const isoDate = (d: Date) => d.toISOString().slice(0, 10);
+
+/** Numeric date used on material cards: 2024-05-12 (UTC, like formatDate). */
+export function formatDateNumeric(d: Date | null | undefined): string | null {
+  return d ? isoDate(d) : null;
+}
+
+/** 2700 -> "45 دقيقة", 4800 -> "ساعة 20 دقيقة", 3600 -> "ساعة". Under a minute -> null. */
+export function formatDurationWords(seconds: number | null | undefined): string | null {
+  if (seconds == null || seconds < 60) return null;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const hours = h === 0 ? "" : h === 1 ? "ساعة" : h === 2 ? "ساعتان" : `${h} ساعات`;
+  const mins = m === 0 ? "" : `${m} دقيقة`;
+  return [hours, mins].filter(Boolean).join(" ");
+}

@@ -1,0 +1,1274 @@
+diff --git a/.env.example b/.env.example
+new file mode 100644
+index 0000000..11b804d
+--- /dev/null
++++ b/.env.example
+@@ -0,0 +1,19 @@
++# Copy to .env.local (read by Next.js) and to .env (read by the db:* and admin:create scripts).
++# Never commit real values: .env and .env.local are git-ignored. Do not put secrets in this file.
++
++# PostgreSQL connection string. Required.
++# Local example:   postgres://USER:PASSWORD@localhost:5432/DATABASE
++# Supabase + Vercel: see "Deploying with Supabase + Vercel" in README.md
++#   (Transaction pooler, port 6543, on Vercel; Session pooler, port 5432, for db:migrate / db:seed).
++DATABASE_URL=
++
++# Public URL of the site, used for absolute links and metadata. Defaults to http://localhost:3000.
++NEXT_PUBLIC_SITE_URL=http://localhost:3000
++
++# Secret that protects admin sessions. Required, at least 32 characters, different per environment.
++# Generate one with:  openssl rand -base64 48
++AUTH_SECRET=
++
++# Optional, for automation only: password read by `npm run admin:create` when there is no
++# interactive terminal. Leave it unset normally; the script prompts for the password instead.
++# ADMIN_PASSWORD=
+diff --git a/package-lock.json b/package-lock.json
+index 1e81ec4..5867b09 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -8,6 +8,7 @@
+       "name": "nahwi-site",
+       "version": "0.1.0",
+       "dependencies": {
++        "@fontsource/aref-ruqaa": "^5.3.0",
+         "@fontsource/ibm-plex-sans-arabic": "^5.3.0",
+         "drizzle-orm": "^0.45.4",
+         "lucide-react": "^1.57.0",
+@@ -1357,6 +1358,15 @@
+         "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
+       }
+     },
++    "node_modules/@fontsource/aref-ruqaa": {
++      "version": "5.3.0",
++      "resolved": "https://registry.npmjs.org/@fontsource/aref-ruqaa/-/aref-ruqaa-5.3.0.tgz",
++      "integrity": "sha512-GC+ckm4v2zndUWuR2JiMdO333mNZqrzxHN/9rpBJhLwDwcwYXzr+GzCRzgK6afGMhYnV0pwrqeGeLm4ZNmWhWQ==",
++      "license": "OFL-1.1",
++      "funding": {
++        "url": "https://github.com/sponsors/ayuhito"
++      }
++    },
+     "node_modules/@fontsource/ibm-plex-sans-arabic": {
+       "version": "5.3.0",
+       "resolved": "https://registry.npmjs.org/@fontsource/ibm-plex-sans-arabic/-/ibm-plex-sans-arabic-5.3.0.tgz",
+diff --git a/package.json b/package.json
+index b2f234e..40c4f24 100644
+--- a/package.json
++++ b/package.json
+@@ -7,7 +7,7 @@
+     "build": "next build",
+     "start": "next start",
+     "lint": "eslint",
+-    "typecheck": "tsc --noEmit",
++    "typecheck": "next typegen && tsc --noEmit",
+     "test": "vitest run",
+     "format": "prettier --write .",
+     "db:generate": "drizzle-kit generate",
+@@ -18,6 +18,7 @@
+     "admin:create": "tsx scripts/create-admin.ts"
+   },
+   "dependencies": {
++    "@fontsource/aref-ruqaa": "^5.3.0",
+     "@fontsource/ibm-plex-sans-arabic": "^5.3.0",
+     "drizzle-orm": "^0.45.4",
+     "lucide-react": "^1.57.0",
+@@ -44,4 +45,4 @@
+     "typescript": "^5",
+     "vitest": "^5.0.4"
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/src/app/(site)/layout.tsx b/src/app/(site)/layout.tsx
+index dbb4598..8379786 100644
+--- a/src/app/(site)/layout.tsx
++++ b/src/app/(site)/layout.tsx
+@@ -2,22 +2,24 @@ import { Suspense } from "react";
+ import { connection } from "next/server";
+ import { SiteFooter } from "@/components/SiteFooter";
+ import { SiteHeader } from "@/components/SiteHeader";
+-import { listPublishedPageLinksCached } from "@/lib/content/public";
++import { getSocialLinksCached, listPublishedPageLinksCached } from "@/lib/content/public";
++import type { SocialLinks } from "@/lib/content/queries";
+ 
+ async function FooterWithLinks() {
+   await connection(); // keep the database out of `next build`
+   let links: { key: string; title: string }[] = [];
++  let social: SocialLinks = {};
+   try {
+-    links = await listPublishedPageLinksCached();
++    [links, social] = await Promise.all([listPublishedPageLinksCached(), getSocialLinksCached()]);
+   } catch (err) {
+     console.error("Footer: could not load page links", err instanceof Error ? err.message : err);
+   }
+-  return <SiteFooter pageLinks={links} />;
++  return <SiteFooter pageLinks={links} social={social} year={new Date().getFullYear()} />;
+ }
+ 
+ export default function SiteLayout({ children }: { children: React.ReactNode }) {
+   return (
+-    <>
++    <div className="flex flex-1 flex-col bg-paper">
+       <a
+         href="#main"
+         className="sr-only focus:not-sr-only focus:absolute focus:start-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-background focus:px-4 focus:py-2 focus:shadow"
+@@ -31,6 +33,6 @@ export default function SiteLayout({ children }: { children: React.ReactNode })
+       <Suspense fallback={<SiteFooter pageLinks={[]} />}>
+         <FooterWithLinks />
+       </Suspense>
+-    </>
++    </div>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/src/app/(site)/page.tsx b/src/app/(site)/page.tsx
+index 073b9d8..302b0f3 100644
+--- a/src/app/(site)/page.tsx
++++ b/src/app/(site)/page.tsx
+@@ -4,7 +4,8 @@ import { connection } from "next/server";
+ import { ContentGrid } from "@/components/ContentGrid";
+ import { EmptyState } from "@/components/EmptyState";
+ import { LoadingState } from "@/components/LoadingState";
+-import { SearchBar } from "@/components/SearchBar";
++import { HomeHero } from "@/components/HomeHero";
++import { TypeTiles } from "@/components/TypeTiles";
+ import { SectionHeading } from "@/components/SectionHeading";
+ import { getHomeDataCached } from "@/lib/content/public";
+ import { formatDate } from "@/lib/format";
+@@ -20,27 +21,14 @@ const KIND_LABELS: Record<string, string> = {
+ export default function HomePage() {
+   return (
+     <>
+-      <section className="relative overflow-hidden border-b border-border">
+-        <div
+-          aria-hidden
+-          className="pattern-star absolute inset-y-0 start-auto end-0 w-2/3 sm:w-1/2"
+-        />
+-        <div className="relative mx-auto max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
+-          <h1 className="max-w-2xl text-3xl font-bold leading-tight sm:text-5xl sm:leading-tight">
+-            الموقع الرسمي للشيخ عبد الرحمن النحوي
+-          </h1>
+-          <p className="mt-4 max-w-xl text-lg text-muted-foreground">
+-            مكتبة علمية رقمية تجمع المواد العلمية المتاحة وتنظمها، لتصل إليها بالبحث أو بالتصنيف.
+-          </p>
+-          <div className="mt-8 max-w-2xl">
+-            <SearchBar size="lg" />
+-          </div>
+-        </div>
++      <HomeHero />
++      <section aria-label="أنواع المواد" className="mx-auto w-full max-w-[1104px] px-4 pt-[34px]">
++        <TypeTiles />
+       </section>
+ 
+       <Suspense
+         fallback={
+-          <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
++          <div className="mx-auto max-w-[1104px] px-4 py-10">
+             <LoadingState />
+           </div>
+         }
+@@ -57,7 +45,7 @@ async function HomeSections() {
+ 
+   if (d.totalPublished === 0 && !d.aboutExcerpt && d.participations.length === 0) {
+     return (
+-      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
++      <div className="mx-auto max-w-[1104px] px-4 py-12">
+         <EmptyState
+           title="لا توجد مواد منشورة بعد"
+           description="ستظهر المواد العلمية والأقسام هنا عند نشرها."
+@@ -66,7 +54,7 @@ async function HomeSections() {
+     );
+   }
+ 
+-  const section = "mx-auto w-full max-w-6xl px-4 pt-12 sm:px-6";
++  const section = "mx-auto w-full max-w-[1104px] px-4 pt-[27px]";
+   return (
+     <div className="pb-4">
+       {d.aboutExcerpt && (
+@@ -81,29 +69,29 @@ async function HomeSections() {
+ 
+       {d.latest.length > 0 && (
+         <section className={section}>
+-          <SectionHeading title="أحدث المواد" href="/library" />
+-          <ContentGrid items={d.latest} />
++          <SectionHeading title="أحدث المواد العلمية" href="/library" />
++          <ContentGrid items={d.latest.slice(0, 4)} columns={4} />
+         </section>
+       )}
+ 
+       {d.featured.length > 0 && (
+         <section className={section}>
+           <SectionHeading title="مواد مختارة" />
+-          <ContentGrid items={d.featured} />
++          <ContentGrid items={d.featured} columns={4} />
+         </section>
+       )}
+ 
+       {d.lectures.length > 0 && (
+         <section className={section}>
+           <SectionHeading title="المحاضرات والدروس" href="/library?type=lecture" />
+-          <ContentGrid items={d.lectures} />
++          <ContentGrid items={d.lectures} columns={4} />
+         </section>
+       )}
+ 
+       {d.writings.length > 0 && (
+         <section className={section}>
+           <SectionHeading title="الكتب والبحوث والمقالات" href="/library?type=research" />
+-          <ContentGrid items={d.writings} />
++          <ContentGrid items={d.writings} columns={4} />
+         </section>
+       )}
+ 
+@@ -151,7 +139,7 @@ async function HomeSections() {
+         <section className={`${section} text-center`}>
+           <Link
+             href="/library"
+-            className="inline-block rounded-md bg-accent px-8 py-3 text-lg font-semibold text-accent-foreground hover:opacity-90"
++            className="inline-block rounded-md bg-brand px-8 py-3 text-lg font-semibold text-white hover:opacity-90"
+           >
+             تصفّح المكتبة كاملة ({d.totalPublished})
+           </Link>
+@@ -159,4 +147,4 @@ async function HomeSections() {
+       )}
+     </div>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/src/app/globals.css b/src/app/globals.css
+index a7a1a59..dd30c49 100644
+--- a/src/app/globals.css
++++ b/src/app/globals.css
+@@ -5,6 +5,8 @@
+ @import "@fontsource/ibm-plex-sans-arabic/arabic-700.css";
+ @import "@fontsource/ibm-plex-sans-arabic/latin-400.css";
+ @import "@fontsource/ibm-plex-sans-arabic/latin-600.css";
++@import "@fontsource/aref-ruqaa/arabic-400.css";
++@import "@fontsource/aref-ruqaa/arabic-700.css";
+ 
+ /*
+  * Design tokens. White surfaces, near-black text, grey borders and one calm
+@@ -20,6 +22,14 @@
+   --accent: #1f5f5b;
+   --accent-foreground: #ffffff;
+   --focus: #1f5f5b;
++
++  /* Home / public-site design tokens (taken from the approved reference design). */
++  --paper: #f9f8f4;
++  --ink: #0e4437;
++  --brand: #10433c;
++  --footer: #153e38;
++  --gold: #a07d3e;
++  --line: #e8e3dd;
+ }
+ 
+ @theme inline {
+@@ -30,6 +40,14 @@
+   --color-border: var(--border);
+   --color-accent: var(--accent);
+   --color-accent-foreground: var(--accent-foreground);
++  --color-paper: var(--paper);
++  --color-ink: var(--ink);
++  --color-brand: var(--brand);
++  --color-footer: var(--footer);
++  --color-gold: var(--gold);
++  --color-line: var(--line);
++  --font-calligraphy: "Aref Ruqaa", "IBM Plex Sans Arabic", serif;
++  --shadow-card: 0 1px 3px rgba(16, 67, 60, 0.06), 0 6px 16px rgba(16, 67, 60, 0.04);
+   --font-sans: "IBM Plex Sans Arabic", system-ui, "Segoe UI", Tahoma, sans-serif;
+ }
+ 
+@@ -71,4 +89,26 @@ body {
+ .pattern-star {
+   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64' fill='none' stroke='%231f5f5b' stroke-opacity='.16' stroke-width='1'%3E%3Crect x='16' y='16' width='32' height='32'/%3E%3Crect x='16' y='16' width='32' height='32' transform='rotate(45 32 32)'/%3E%3C/svg%3E");
+   mask-image: linear-gradient(to right, #000 0%, transparent 80%);
+-}
+\ No newline at end of file
++}
++
++/*
++ * Home hero surface. The reference uses a blurred library photograph; until the
++ * original image is supplied this is approximated with soft gradients (warm
++ * beige at the start edge, cream in the middle, light wood at the end edge).
++ */
++.hero-surface {
++  background:
++    linear-gradient(to left, rgba(205, 168, 128, 0.55) 0%, rgba(216, 187, 153, 0) 17%),
++    linear-gradient(
++      to right,
++      rgba(224, 211, 194, 0.95) 0%,
++      rgba(235, 227, 214, 0.7) 12%,
++      rgba(242, 237, 231, 0) 32%
++    ),
++    #f4f0ea;
++}
++
++/* Eight-point-star lattice, very light, used in the hero and the footer corners. */
++.pattern-lattice {
++  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 56 56' fill='none' stroke='%23a07d3e' stroke-width='1'%3E%3Crect x='14' y='14' width='28' height='28'/%3E%3Crect x='14' y='14' width='28' height='28' transform='rotate(45 28 28)'/%3E%3C/svg%3E");
++}
+diff --git a/src/components/BrandMark.tsx b/src/components/BrandMark.tsx
+new file mode 100644
+index 0000000..ac5487f
+--- /dev/null
++++ b/src/components/BrandMark.tsx
+@@ -0,0 +1,25 @@
++/**
++ * Provisional emblem (eight-point interlaced star). It is a placeholder for the
++ * official identity and must be replaced once the Sheikh's team approves a logo.
++ */
++export function BrandMark({ size = 36, className = "" }: { size?: number; className?: string }) {
++  return (
++    <svg
++      aria-hidden
++      width={size}
++      height={size}
++      viewBox="0 0 48 48"
++      fill="none"
++      stroke="currentColor"
++      strokeWidth="1.6"
++      strokeLinejoin="round"
++      className={className}
++    >
++      <rect x="9" y="9" width="30" height="30" />
++      <rect x="9" y="9" width="30" height="30" transform="rotate(45 24 24)" />
++      <path d="M24 4v10M24 34v10M4 24h10M34 24h10" />
++      <rect x="16" y="16" width="16" height="16" transform="rotate(45 24 24)" strokeWidth="2.2" />
++      <circle cx="24" cy="24" r="3.2" />
++    </svg>
++  );
++}
+diff --git a/src/components/ContentCard.tsx b/src/components/ContentCard.tsx
+index 185a3a6..f10894e 100644
+--- a/src/components/ContentCard.tsx
++++ b/src/components/ContentCard.tsx
+@@ -1,22 +1,42 @@
+ import Link from "next/link";
+-import { Calendar, Clock, User } from "lucide-react";
++import { Calendar, Clock, Feather, FileText, Play } from "lucide-react";
+ import type { ContentListItem } from "@/lib/content/queries";
+-import { formatDate, formatDuration, safeHttpUrl } from "@/lib/format";
++import { formatDateNumeric, formatDurationWords, safeHttpUrl } from "@/lib/format";
++import { typeUi } from "./content-type-ui";
++
++const ACTION_ICON = { play: Play, file: FileText, feather: Feather } as const;
+ 
+ export function ContentCard({ item }: { item: ContentListItem }) {
+-  const date = formatDate(item.publishedAt);
+-  const duration = formatDuration(item.durationSeconds);
++  const date = formatDateNumeric(item.publishedAt);
++  const duration = formatDurationWords(item.durationSeconds);
+   const thumb = safeHttpUrl(item.thumbnailUrl);
++  const ui = typeUi(item.typeKey);
++  const Action = ACTION_ICON[ui.action];
+   return (
+-    <article className="relative flex flex-col overflow-hidden rounded-md border border-border bg-background transition-colors focus-within:border-accent hover:border-foreground/40">
+-      {thumb && (
+-        // External thumbnail hosts are not known in advance, so next/image is not used here.
+-        // eslint-disable-next-line @next/next/no-img-element
+-        <img src={thumb} alt="" loading="lazy" className="aspect-video w-full object-cover" />
+-      )}
+-      <div className="flex flex-1 flex-col gap-2 p-5">
+-        <p className="text-sm font-semibold text-accent">{item.typeName}</p>
+-        <h3 className="line-clamp-2 text-lg font-bold leading-snug">
++    <article className="relative flex w-full flex-col overflow-hidden rounded-lg border border-line bg-[#faf9f5] shadow-card transition-colors focus-within:border-brand hover:border-brand/40">
++      <div className="relative aspect-[3.94/1] w-full overflow-hidden">
++        {thumb ? (
++          // External thumbnail hosts are not known in advance, so next/image is not used here.
++          // eslint-disable-next-line @next/next/no-img-element
++          <img src={thumb} alt="" loading="lazy" className="h-full w-full object-cover" />
++        ) : (
++          <div
++            aria-hidden
++            className="flex h-full w-full items-center justify-center"
++            style={{ background: ui.tile.bg, color: ui.tile.fg }}
++          >
++            <ui.Icon size={26} strokeWidth={1.4} className="opacity-50" />
++          </div>
++        )}
++        <span
++          className="absolute start-2.5 top-2 rounded-md px-2.5 py-0.5 text-[11px] font-semibold leading-5 shadow-[0_1px_3px_rgba(0,0,0,0.12)]"
++          style={{ background: ui.badge.bg, color: ui.badge.fg }}
++        >
++          {item.typeName}
++        </span>
++      </div>
++      <div className="flex flex-1 flex-col px-3.5 pb-2.5 pt-1.5">
++        <h3 className="line-clamp-2 text-[12.5px] font-bold leading-snug text-ink">
+           <Link
+             href={`/library/${encodeURIComponent(item.slug)}`}
+             className="after:absolute after:inset-0 focus-visible:outline-none"
+@@ -24,32 +44,29 @@ export function ContentCard({ item }: { item: ContentListItem }) {
+             {item.title}
+           </Link>
+         </h3>
+-        {item.summary && (
+-          <p className="line-clamp-3 text-sm text-muted-foreground">{item.summary}</p>
+-        )}
+-        {(item.speakerName || date || duration) && (
+-          <ul className="mt-auto flex flex-wrap gap-x-4 gap-y-1 pt-3 text-xs text-muted-foreground">
+-            {item.speakerName && (
+-              <li className="flex items-center gap-1">
+-                <User aria-hidden size={14} />
+-                {item.speakerName}
+-              </li>
+-            )}
++        <div className="mt-auto flex items-center justify-between gap-2 pt-3">
++          <ul className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10.5px] text-[#6b6b66]">
+             {date && (
+               <li className="flex items-center gap-1">
+-                <Calendar aria-hidden size={14} />
+-                {date}
++                <Calendar aria-hidden size={12} />
++                <span className="ltr-isolate">{date}</span>
+               </li>
+             )}
+             {duration && (
+               <li className="flex items-center gap-1">
+-                <Clock aria-hidden size={14} />
+-                <span className="ltr-isolate">{duration}</span>
++                <Clock aria-hidden size={12} />
++                {duration}
+               </li>
+             )}
+           </ul>
+-        )}
++          <span
++            aria-hidden
++            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#eceae4] text-ink"
++          >
++            <Action size={11} />
++          </span>
++        </div>
+       </div>
+     </article>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/src/components/ContentGrid.tsx b/src/components/ContentGrid.tsx
+index a489b52..51f5d6f 100644
+--- a/src/components/ContentGrid.tsx
++++ b/src/components/ContentGrid.tsx
+@@ -1,16 +1,25 @@
+ import type { ContentListItem } from "@/lib/content/queries";
+ import { ContentCard } from "./ContentCard";
+ 
+-export function ContentGrid({ items }: { items: ContentListItem[] }) {
++const COLUMNS = {
++  3: "sm:grid-cols-2 lg:grid-cols-3",
++  4: "sm:grid-cols-2 lg:grid-cols-4",
++} as const;
++
++export function ContentGrid({
++  items,
++  columns = 3,
++}: {
++  items: ContentListItem[];
++  columns?: keyof typeof COLUMNS;
++}) {
+   return (
+-    <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
++    <ul className={`grid gap-[15px] ${COLUMNS[columns]}`}>
+       {items.map((item) => (
+         <li key={item.id} className="flex">
+-          <div className="flex w-full">
+-            <ContentCard item={item} />
+-          </div>
++          <ContentCard item={item} />
+         </li>
+       ))}
+     </ul>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/src/components/HeroPortrait.tsx b/src/components/HeroPortrait.tsx
+new file mode 100644
+index 0000000..0c1a33e
+--- /dev/null
++++ b/src/components/HeroPortrait.tsx
+@@ -0,0 +1,49 @@
++import { existsSync } from "node:fs";
++import path from "node:path";
++import { NamePlate } from "./NamePlate";
++
++/**
++ * Official portrait slot. The picture is only shown when a file named
++ * public/images/sheikh-portrait.(webp|png|jpg) exists, i.e. once an official,
++ * permitted photograph is supplied (a cut-out with transparent background
++ * gives the intended look). Nothing is shown otherwise.
++ */
++const CANDIDATES = ["webp", "png", "jpg"] as const;
++
++function findPortrait(): string | null {
++  for (const ext of CANDIDATES) {
++    const file = `sheikh-portrait.${ext}`;
++    if (existsSync(path.join(process.cwd(), "public", "images", file))) return `/images/${file}`;
++  }
++  return null;
++}
++
++export function HeroPortrait() {
++  const src = findPortrait();
++  if (!src) return null;
++  return (
++    <div
++      aria-hidden={false}
++      className="pointer-events-none absolute inset-0 hidden min-[1180px]:block"
++    >
++      {/* Arched gold frame (decorative) */}
++      <svg
++        aria-hidden
++        className="absolute bottom-0 start-[275px] h-[267px] w-[283px] text-gold"
++        viewBox="0 0 283 267"
++        fill="none"
++        stroke="currentColor"
++        strokeWidth="1"
++      >
++        <path d="M1 267V101H24C60 92 110 60 141 0C172 60 222 92 259 101H282V267" />
++      </svg>
++      {/* eslint-disable-next-line @next/next/no-img-element */}
++      <img
++        src={src}
++        alt="صورة الشيخ عبد الرحمن النحوي"
++        className="absolute bottom-0 start-[240px] h-[281px] w-[318px] object-cover object-top"
++      />
++      <NamePlate className="absolute start-[96px] top-[71px] h-[110px] w-[136px]" />
++    </div>
++  );
++}
+diff --git a/src/components/HomeHero.tsx b/src/components/HomeHero.tsx
+new file mode 100644
+index 0000000..9ed682f
+--- /dev/null
++++ b/src/components/HomeHero.tsx
+@@ -0,0 +1,66 @@
++import { Search } from "lucide-react";
++import { HeroPortrait } from "./HeroPortrait";
++
++export function HomeHero() {
++  return (
++    <section className="hero-surface relative overflow-hidden border-b border-line">
++      <div
++        aria-hidden
++        className="pattern-lattice absolute inset-y-0 end-0 hidden w-[120px] opacity-[.16] [mask-image:linear-gradient(to_right,#000,transparent)] md:block"
++      />
++      <div className="relative mx-auto h-full max-w-[1280px] min-[1180px]:h-[281px]">
++        <div className="px-4 py-10 min-[1180px]:absolute min-[1180px]:start-[670px] min-[1180px]:top-[34px] min-[1180px]:w-[372px] min-[1180px]:p-0">
++          <div className="flex h-5 w-full max-w-[340px] items-center justify-center gap-2.5 text-gold">
++            <span aria-hidden className="flex items-center">
++              <span className="h-px w-9 bg-gold/70" />
++              <span className="h-1.5 w-1.5 rotate-45 bg-gold" />
++            </span>
++            <p className="text-[14px] font-semibold">منصة علمية رقمية</p>
++            <span aria-hidden className="flex items-center">
++              <span className="h-1.5 w-1.5 rotate-45 bg-gold" />
++              <span className="h-px w-9 bg-gold/70" />
++            </span>
++          </div>
++          <h1 className="-mt-0.5 text-[30px] font-bold leading-[44px] text-ink min-[1180px]:text-[36px] min-[1180px]:leading-[52px]">
++            العلمُ يُحفظ بِالتوثيق،
++            <br />
++            ويُنتفعُ به بالنشر
++          </h1>
++          <p className="mt-1.5 max-w-[340px] text-[14px] leading-[22px] text-[#3b4a4a]">
++            منصة تجمع المواد العلمية المتاحة للشيخ عبد الرحمن النحوي، وتنظمها لتيسير الوصول إليها مع
++            العناية بالمصادر وحقوق النشر.
++          </p>
++          <form
++            action="/library"
++            method="get"
++            role="search"
++            className="mt-3.5 flex h-9 w-full max-w-[371px] items-center"
++          >
++            <label htmlFor="hero-search" className="sr-only">
++              ابحث في جميع المواد العلمية
++            </label>
++            <div className="flex h-full min-w-0 flex-1 items-center gap-2 rounded-full bg-white ps-4 pe-6 shadow-[0_1px_5px_rgba(60,45,20,0.10)]">
++              <Search aria-hidden size={15} className="shrink-0 text-[#4a5a55]" />
++              <input
++                id="hero-search"
++                name="q"
++                type="search"
++                maxLength={100}
++                placeholder="ابحث في جميع المواد العلمية..."
++                className="min-w-0 flex-1 bg-transparent text-[11px] outline-none placeholder:text-[#8a8a85]"
++              />
++            </div>
++            <button
++              type="submit"
++              className="relative z-10 -ms-5 inline-flex h-full w-[82px] shrink-0 items-center justify-center gap-2 rounded-full bg-brand text-[12px] font-semibold text-white transition-opacity hover:opacity-90"
++            >
++              <Search aria-hidden size={14} />
++              بحث
++            </button>
++          </form>
++        </div>
++        <HeroPortrait />
++      </div>
++    </section>
++  );
++}
+diff --git a/src/components/MainNav.tsx b/src/components/MainNav.tsx
+index 3c548d5..6f47f24 100644
+--- a/src/components/MainNav.tsx
++++ b/src/components/MainNav.tsx
+@@ -1,7 +1,7 @@
+ "use client";
+ 
+ import Link from "next/link";
+-import { usePathname } from "next/navigation";
++import { usePathname, useSearchParams } from "next/navigation";
+ import { useState } from "react";
+ import { Menu, X } from "lucide-react";
+ 
+@@ -9,28 +9,44 @@ type Item = { readonly href: string; readonly label: string };
+ 
+ export function MainNav({ items }: { items: readonly Item[] }) {
+   const pathname = usePathname();
++  const params = useSearchParams();
+   // Remember WHERE the menu was opened; it closes by itself after navigating.
+   const [openAt, setOpenAt] = useState<string | null>(null);
+   const open = openAt === pathname;
+ 
+-  const isActive = (href: string) =>
+-    href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
++  // Items such as /library?type=poem are only "current" for that exact filter,
++  // and plain /library is current for every other library view.
++  const typeParam = params.get("type");
++  const queryTypes = items.flatMap((i) => {
++    const t = new URL(i.href, "http://x").searchParams.get("type");
++    return t ? [t] : [];
++  });
++  const isActive = (href: string) => {
++    const u = new URL(href, "http://x");
++    const wanted = u.searchParams.get("type");
++    if (wanted) return pathname === u.pathname && typeParam === wanted;
++    if (u.pathname === "/") return pathname === "/";
++    const inside = pathname === u.pathname || pathname.startsWith(`${u.pathname}/`);
++    return u.pathname === "/library" && pathname === "/library"
++      ? inside && !(typeParam && queryTypes.includes(typeParam))
++      : inside;
++  };
+ 
+   const linkClass = (href: string) =>
+-    `rounded-md px-3 py-2 text-[0.95rem] transition-colors ${
+-      isActive(href)
+-        ? "font-semibold text-accent"
+-        : "text-foreground/80 hover:bg-muted hover:text-foreground"
++    `relative flex items-center text-[12px] font-semibold transition-colors ${
++      isActive(href) ? "text-ink" : "text-[#26413b] hover:text-ink"
+     }`;
++  const underline =
++    "after:absolute after:inset-x-0 after:bottom-[10px] after:h-[2px] after:bg-[#958168] after:content-['']";
+ 
+   return (
+-    <div className="flex items-center">
+-      <nav aria-label="التنقل الرئيسي" className="hidden items-center gap-1 md:flex">
++    <div className="flex flex-1 items-center justify-center">
++      <nav aria-label="التنقل الرئيسي" className="hidden items-stretch gap-[30px] lg:flex">
+         {items.map((i) => (
+           <Link
+             key={i.href}
+             href={i.href}
+-            className={linkClass(i.href)}
++            className={`${linkClass(i.href)} h-[59px] ${isActive(i.href) ? underline : ""}`}
+             aria-current={isActive(i.href) ? "page" : undefined}
+           >
+             {i.label}
+@@ -40,7 +56,7 @@ export function MainNav({ items }: { items: readonly Item[] }) {
+ 
+       <button
+         type="button"
+-        className="inline-flex h-10 w-10 items-center justify-center rounded-md border border-border md:hidden"
++        className="ms-auto inline-flex h-10 w-10 items-center justify-center rounded-md border border-line lg:hidden"
+         aria-expanded={open}
+         aria-controls="mobile-nav"
+         aria-label={open ? "إغلاق القائمة" : "فتح القائمة"}
+@@ -53,14 +69,16 @@ export function MainNav({ items }: { items: readonly Item[] }) {
+         <nav
+           id="mobile-nav"
+           aria-label="التنقل الرئيسي"
+-          className="absolute inset-x-0 top-full z-30 border-b border-border bg-background px-4 pb-4 pt-2 md:hidden"
++          className="absolute inset-x-0 top-full z-30 border-b border-line bg-[#f8f7f2] px-4 pb-4 pt-2 lg:hidden"
+         >
+           <ul className="flex flex-col">
+             {items.map((i) => (
+               <li key={i.href}>
+                 <Link
+                   href={i.href}
+-                  className={`block ${linkClass(i.href)} py-3`}
++                  className={`block py-3 text-[15px] font-semibold ${
++                    isActive(i.href) ? "text-ink" : "text-[#26413b]"
++                  }`}
+                   aria-current={isActive(i.href) ? "page" : undefined}
+                 >
+                   {i.label}
+@@ -72,4 +90,4 @@ export function MainNav({ items }: { items: readonly Item[] }) {
+       )}
+     </div>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/src/components/NamePlate.tsx b/src/components/NamePlate.tsx
+new file mode 100644
+index 0000000..5d60d94
+--- /dev/null
++++ b/src/components/NamePlate.tsx
+@@ -0,0 +1,23 @@
++/** Paper name plate of the hero. Text only, so it works without any image asset. */
++export function NamePlate({ className = "" }: { className?: string }) {
++  return (
++    <div className={`relative ${className}`}>
++      {/* scalloped top edge */}
++      <span
++        aria-hidden
++        className="absolute inset-x-0 -top-2 mx-auto h-4 w-16 rounded-t-[40px] bg-[#f4f1ea]"
++      />
++      <div className="relative flex h-full flex-col items-center justify-center bg-[#f4f1ea] px-3 text-center shadow-[0_6px_18px_rgba(60,45,20,0.12)]">
++        <p className="font-calligraphy text-[13px] leading-none text-ink">الشيخ</p>
++        <p className="mt-2 whitespace-nowrap font-calligraphy text-[16px] font-bold leading-none text-ink">
++          عبد الرحمن النحوي
++        </p>
++        <span aria-hidden className="mt-4 flex items-center gap-1.5 text-gold">
++          <span className="h-px w-6 bg-gold/70" />
++          <span className="h-1.5 w-1.5 rotate-45 bg-gold" />
++          <span className="h-px w-6 bg-gold/70" />
++        </span>
++      </div>
++    </div>
++  );
++}
+diff --git a/src/components/SectionHeading.tsx b/src/components/SectionHeading.tsx
+index 5076708..1a7e773 100644
+--- a/src/components/SectionHeading.tsx
++++ b/src/components/SectionHeading.tsx
+@@ -1,4 +1,5 @@
+ import Link from "next/link";
++import { ArrowLeft } from "lucide-react";
+ 
+ export function SectionHeading({
+   title,
+@@ -10,13 +11,20 @@ export function SectionHeading({
+   linkLabel?: string;
+ }) {
+   return (
+-    <div className="mb-5 flex items-baseline justify-between gap-4">
+-      <h2 className="text-2xl font-bold">{title}</h2>
++    <div className="mb-4 flex items-center justify-between gap-4">
++      <div className="flex items-center gap-[15px]">
++        <h2 className="text-[20px] font-bold leading-tight text-ink">{title}</h2>
++        <span aria-hidden className="h-px w-8 bg-gold/70" />
++      </div>
+       {href && (
+-        <Link href={href} className="shrink-0 text-sm text-accent underline underline-offset-4">
++        <Link
++          href={href}
++          className="flex shrink-0 items-center gap-1.5 text-[12px] font-medium text-ink hover:underline"
++        >
+           {linkLabel}
++          <ArrowLeft aria-hidden size={14} />
+         </Link>
+       )}
+     </div>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/src/components/SiteFooter.tsx b/src/components/SiteFooter.tsx
+index 0287f2d..38bdf77 100644
+--- a/src/components/SiteFooter.tsx
++++ b/src/components/SiteFooter.tsx
+@@ -1,52 +1,105 @@
+ import Link from "next/link";
+-import { NAV_ITEMS, POLICY_ROUTES } from "./nav-items";
++import { Send } from "lucide-react";
++import type { SocialLinks } from "@/lib/content/queries";
++import { BrandMark } from "./BrandMark";
++import { FOOTER_LINKS, POLICY_ROUTES } from "./nav-items";
+ 
+-export function SiteFooter({ pageLinks }: { pageLinks: { key: string; title: string }[] }) {
++function YouTubeIcon() {
++  return (
++    <svg aria-hidden width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
++      <path d="M21.6 7.2a2.5 2.5 0 0 0-1.76-1.77C18.3 5 12 5 12 5s-6.3 0-7.84.43A2.5 2.5 0 0 0 2.4 7.2C2 8.75 2 12 2 12s0 3.25.4 4.8a2.5 2.5 0 0 0 1.76 1.77C5.7 19 12 19 12 19s6.3 0 7.84-.43a2.5 2.5 0 0 0 1.76-1.77C22 15.25 22 12 22 12s0-3.25-.4-4.8ZM10 15V9l5.2 3Z" />
++    </svg>
++  );
++}
++
++function XIcon() {
++  return (
++    <svg aria-hidden width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
++      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
++    </svg>
++  );
++}
++
++export function SiteFooter({
++  pageLinks,
++  social = {},
++  year,
++}: {
++  pageLinks: { key: string; title: string }[];
++  social?: SocialLinks;
++  year?: number;
++}) {
+   const policies = pageLinks.filter((p) => POLICY_ROUTES[p.key]);
++  // Listed right-to-left (RTL), so the screen shows YouTube, X, Telegram from the left, as designed.
++  const socials = [
++    { href: social.telegram, label: "قناة تيليجرام", icon: <Send aria-hidden size={13} /> },
++    { href: social.x, label: "حساب إكس", icon: <XIcon /> },
++    { href: social.youtube, label: "قناة اليوتيوب", icon: <YouTubeIcon /> },
++  ].filter((s) => s.href);
++
+   return (
+-    <footer className="mt-16 border-t border-border bg-muted">
+-      <div className="mx-auto grid max-w-6xl gap-8 px-4 py-10 sm:px-6 md:grid-cols-[1.5fr_1fr_1fr]">
+-        <div>
+-          <p className="text-lg font-bold">الموقع الرسمي للشيخ عبد الرحمن النحوي</p>
+-          <p className="mt-2 max-w-md text-sm text-muted-foreground">
+-            مكتبة علمية رقمية تجمع المواد العلمية المتاحة وتنظمها. النسخة الحالية باللغة العربية.
++    <footer className="relative mt-4 overflow-hidden bg-footer text-white">
++      {/* Corner ornaments (decorative) */}
++      <div
++        aria-hidden
++        className="pattern-lattice absolute inset-y-0 start-0 hidden w-[110px] opacity-25 [mask-image:linear-gradient(to_left,#000,transparent)] md:block"
++      />
++      <div
++        aria-hidden
++        className="pattern-lattice absolute inset-y-0 end-0 hidden w-[110px] opacity-25 [mask-image:linear-gradient(to_right,#000,transparent)] md:block"
++      />
++      <div className="relative mx-auto grid min-h-[106px] max-w-[1104px] items-center gap-5 px-4 pb-5 pt-[17px] md:grid-cols-[1fr_auto_1fr]">
++        <div className="justify-self-start">
++          <div className="flex items-center gap-2.5">
++            <BrandMark size={36} className="text-[#d9c28b]" />
++            <p className="leading-tight">
++              <span className="block text-[11px] text-white/85">الموقع الرسمي للشيخ</span>
++              <span className="block text-[14px] font-bold">عبد الرحمن النحوي</span>
++            </p>
++          </div>
++          <p className="mt-2 text-[10px] text-white/80">
++            جميع الحقوق محفوظة {year ? <>© {year} · </> : null}الموقع الرسمي للشيخ عبد الرحمن النحوي
+           </p>
+         </div>
+-        <nav aria-label="روابط الموقع">
+-          <p className="mb-2 font-semibold">الموقع</p>
+-          <ul className="space-y-1 text-sm">
+-            {NAV_ITEMS.map((i) => (
+-              <li key={i.href}>
+-                <Link href={i.href} className="text-muted-foreground hover:text-foreground">
+-                  {i.label}
++
++        <nav aria-label="روابط الموقع" className="justify-self-center">
++          <ul className="flex flex-wrap items-center justify-center gap-y-1 text-[11px]">
++            {[
++              ...FOOTER_LINKS,
++              ...policies.map((p) => ({ href: POLICY_ROUTES[p.key], label: p.title })),
++            ].map((l, i) => (
++              <li
++                key={l.href}
++                className={`px-5 ${i > 0 ? "border-s border-white/30" : ""} leading-[14px]`}
++              >
++                <Link href={l.href} className="text-white/90 hover:text-white">
++                  {l.label}
+                 </Link>
+               </li>
+             ))}
+           </ul>
+         </nav>
+-        {policies.length > 0 && (
+-          <nav aria-label="السياسات">
+-            <p className="mb-2 font-semibold">السياسات</p>
+-            <ul className="space-y-1 text-sm">
+-              {policies.map((p) => (
+-                <li key={p.key}>
+-                  <Link
+-                    href={POLICY_ROUTES[p.key]}
+-                    className="text-muted-foreground hover:text-foreground"
+-                  >
+-                    {p.title}
+-                  </Link>
+-                </li>
+-              ))}
+-            </ul>
+-          </nav>
++
++        {socials.length > 0 ? (
++          <ul className="flex items-center justify-self-end gap-[9px]" aria-label="وسائل التواصل">
++            {socials.map((s) => (
++              <li key={s.label}>
++                <a
++                  href={s.href}
++                  target="_blank"
++                  rel="noopener noreferrer"
++                  aria-label={s.label}
++                  className="flex h-6 w-6 items-center justify-center rounded-full border border-white/60 text-white hover:bg-white/10"
++                >
++                  {s.icon}
++                </a>
++              </li>
++            ))}
++          </ul>
++        ) : (
++          <span aria-hidden />
+         )}
+       </div>
+-      <div className="border-t border-border">
+-        <p className="mx-auto max-w-6xl px-4 py-4 text-xs text-muted-foreground sm:px-6">
+-          © الموقع الرسمي للشيخ عبد الرحمن النحوي
+-        </p>
+-      </div>
+     </footer>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/src/components/SiteHeader.tsx b/src/components/SiteHeader.tsx
+index 6b8f857..1f36131 100644
+--- a/src/components/SiteHeader.tsx
++++ b/src/components/SiteHeader.tsx
+@@ -1,35 +1,34 @@
+ import { Suspense } from "react";
+ import Link from "next/link";
+-import { BookOpen } from "lucide-react";
++import { Search } from "lucide-react";
++import { BrandMark } from "./BrandMark";
+ import { MainNav } from "./MainNav";
+ import { NAV_ITEMS } from "./nav-items";
+ 
+ export function SiteHeader() {
+   return (
+-    <header className="relative border-b border-border bg-background">
+-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
+-        <Link href="/" className="flex items-center gap-3" aria-label="الصفحة الرئيسية">
+-          {/* Provisional logo slot: replace with the official identity once approved. */}
+-          <span
+-            aria-hidden
+-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-border text-accent"
+-          >
+-            <BookOpen size={22} strokeWidth={1.6} />
+-          </span>
++    <header className="relative z-20 h-[59px] border-b border-line bg-[#f8f7f2] shadow-[0_1px_6px_rgba(16,67,60,0.05)]">
++      <div className="mx-auto flex h-full max-w-[1280px] items-center gap-4 px-4 lg:px-[72px]">
++        <Link href="/" className="flex shrink-0 items-center gap-2.5" aria-label="الصفحة الرئيسية">
++          <BrandMark size={38} className="text-ink" />
+           <span className="leading-tight">
+-            <span className="block text-[0.8rem] text-muted-foreground">الموقع الرسمي</span>
+-            <span className="block text-base font-bold sm:text-lg">الشيخ عبد الرحمن النحوي</span>
++            <span className="block text-[11px] text-[#3b4a4a]">الموقع الرسمي للشيخ</span>
++            <span className="block text-[14px] font-bold text-ink">عبد الرحمن النحوي</span>
+           </span>
+         </Link>
+-        {/* usePathname() inside MainNav needs a Suspense boundary; the fallback is the same links, unhighlighted. */}
++
++        {/* usePathname()/useSearchParams() inside MainNav need a Suspense boundary; the fallback is the same links, unhighlighted. */}
+         <Suspense
+           fallback={
+-            <nav aria-label="التنقل الرئيسي" className="hidden items-center gap-1 md:flex">
++            <nav
++              aria-label="التنقل الرئيسي"
++              className="hidden flex-1 items-center justify-center gap-[30px] lg:flex"
++            >
+               {NAV_ITEMS.map((i) => (
+                 <Link
+                   key={i.href}
+                   href={i.href}
+-                  className="rounded-md px-3 py-2 text-[0.95rem] text-foreground/80"
++                  className="text-[12px] font-semibold text-[#26413b]"
+                 >
+                   {i.label}
+                 </Link>
+@@ -39,7 +38,33 @@ export function SiteHeader() {
+         >
+           <MainNav items={NAV_ITEMS} />
+         </Suspense>
++
++        <form
++          action="/library"
++          method="get"
++          role="search"
++          className="hidden h-8 w-[180px] shrink-0 items-center rounded-full border border-[#e3dfd6] bg-[#fbfaf7] ps-4 pe-1 lg:flex"
++        >
++          <label htmlFor="site-search" className="sr-only">
++            ابحث في الموقع
++          </label>
++          <input
++            id="site-search"
++            name="q"
++            type="search"
++            maxLength={100}
++            placeholder="ابحث في الموقع..."
++            className="min-w-0 flex-1 bg-transparent text-[11px] text-foreground outline-none placeholder:text-[#8a8a85]"
++          />
++          <button
++            type="submit"
++            aria-label="بحث"
++            className="inline-flex h-7 w-7 items-center justify-center rounded-full text-ink"
++          >
++            <Search aria-hidden size={15} />
++          </button>
++        </form>
+       </div>
+     </header>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/src/components/TypeTiles.tsx b/src/components/TypeTiles.tsx
+new file mode 100644
+index 0000000..99f0381
+--- /dev/null
++++ b/src/components/TypeTiles.tsx
+@@ -0,0 +1,48 @@
++import Link from "next/link";
++import { ChevronLeft } from "lucide-react";
++import { typeUi } from "./content-type-ui";
++
++/** Shortcuts into the library, one per content type of the approved design. */
++const TILES = [
++  { type: "lecture", title: "محاضرات ودروس", subtitle: "محاضرات ودروس مسجلة" },
++  { type: "lesson", title: "دروس", subtitle: "دروس علمية متنوعة" },
++  { type: "audio", title: "تسجيل صوتي", subtitle: "مواد صوتية مختارة" },
++  { type: "research", title: "بحث", subtitle: "أبحاث ودراسات علمية" },
++  { type: "article", title: "مقالات", subtitle: "مقالات ومشاركات علمية" },
++  { type: "poem", title: "قصائد الشيخ", subtitle: "قصائد ونصوص علمية" },
++] as const;
++
++export function TypeTiles() {
++  return (
++    <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6 lg:gap-[15px]">
++      {TILES.map((t) => {
++        const ui = typeUi(t.type);
++        return (
++          <li key={t.type} className="flex">
++            <Link
++              href={`/library?type=${t.type}`}
++              className="relative flex min-h-[104px] w-full flex-col rounded-lg border border-line bg-[#faf9f5] px-[15px] pb-3 pt-[13px] shadow-card transition-colors hover:border-brand/40"
++            >
++              <span
++                aria-hidden
++                className="flex h-[34px] w-[36px] items-center justify-center rounded-lg"
++                style={{ background: ui.tile.bg, color: ui.tile.fg }}
++              >
++                <ui.Icon size={19} strokeWidth={1.7} />
++              </span>
++              <span className="mt-[7px] text-[13px] font-bold leading-tight text-ink">
++                {t.title}
++              </span>
++              <span className="mt-1 text-[10.5px] leading-tight text-[#7a7a75]">{t.subtitle}</span>
++              <ChevronLeft
++                aria-hidden
++                size={14}
++                className="absolute end-3 top-1/2 -translate-y-1/2 text-[#6b6b66]"
++              />
++            </Link>
++          </li>
++        );
++      })}
++    </ul>
++  );
++}
+diff --git a/src/components/content-type-ui.tsx b/src/components/content-type-ui.tsx
+new file mode 100644
+index 0000000..bec9480
+--- /dev/null
++++ b/src/components/content-type-ui.tsx
+@@ -0,0 +1,72 @@
++import {
++  BookOpen,
++  FileText,
++  Feather,
++  Headphones,
++  Mic,
++  NotepadText,
++  type LucideIcon,
++} from "lucide-react";
++
++export type TypeUi = {
++  Icon: LucideIcon;
++  /** Pastel tile (home type shortcuts, thumbnail fallback). */
++  tile: { bg: string; fg: string };
++  /** Small label on a material card. */
++  badge: { bg: string; fg: string };
++  /** Icon of the round action button on a material card. */
++  action: "play" | "file" | "feather";
++};
++
++const NEUTRAL: TypeUi = {
++  Icon: FileText,
++  tile: { bg: "#ecebe6", fg: "#5c5c5c" },
++  badge: { bg: "#efeee9", fg: "#5c5c5c" },
++  action: "file",
++};
++
++export const TYPE_UI: Record<string, TypeUi> = {
++  lecture: {
++    Icon: Mic,
++    tile: { bg: "#dbe8f0", fg: "#3f78a8" },
++    badge: { bg: "#dcece6", fg: "#1f6a57" },
++    action: "play",
++  },
++  lesson: {
++    Icon: BookOpen,
++    tile: { bg: "#dfefe4", fg: "#2f6b4a" },
++    badge: { bg: "#f4e6d3", fg: "#8a6a3d" },
++    action: "play",
++  },
++  audio: {
++    Icon: Headphones,
++    tile: { bg: "#f5e8d6", fg: "#8a6a3d" },
++    badge: { bg: "#f3e7d5", fg: "#7c6136" },
++    action: "play",
++  },
++  research: {
++    Icon: FileText,
++    tile: { bg: "#e3e5f3", fg: "#5967a0" },
++    badge: { bg: "#e4e7f3", fg: "#4a5a8c" },
++    action: "file",
++  },
++  article: {
++    Icon: NotepadText,
++    tile: { bg: "#f9e0d9", fg: "#b0603f" },
++    badge: { bg: "#f9dede", fg: "#9c4b48" },
++    action: "file",
++  },
++  book: { ...NEUTRAL, badge: { bg: "#e9efe0", fg: "#5b6b3a" } },
++  participation: { ...NEUTRAL, badge: { bg: "#e6eef5", fg: "#3f6786" }, action: "play" },
++  seminar: { ...NEUTRAL, badge: { bg: "#e6eef5", fg: "#3f6786" }, action: "play" },
++  poem: {
++    Icon: Feather,
++    tile: { bg: "#d8efe6", fg: "#1e6a55" },
++    badge: { bg: "#d9efe5", fg: "#1e4c41" },
++    action: "feather",
++  },
++};
++
++export function typeUi(key: string): TypeUi {
++  return TYPE_UI[key] ?? NEUTRAL;
++}
+diff --git a/src/components/nav-items.ts b/src/components/nav-items.ts
+index 8877ddf..a12abdf 100644
+--- a/src/components/nav-items.ts
++++ b/src/components/nav-items.ts
+@@ -1,13 +1,29 @@
+-export const NAV_ITEMS = [
++export type NavItem = { readonly href: string; readonly label: string };
++
++/** Main navigation, in the order of the approved design. */
++export const NAV_ITEMS: readonly NavItem[] = [
+   { href: "/", label: "الرئيسية" },
+-  { href: "/library", label: "المكتبة" },
++  { href: "/about", label: "التعريف بالشيخ" },
++  { href: "/library", label: "المكتبة العلمية" },
++  { href: "/library?type=participation", label: "المشاركات العلمية" },
+   { href: "/categories", label: "التصنيفات" },
+-  { href: "/about", label: "عن الشيخ" },
+-] as const;
++  { href: "/library?type=poem", label: "قصائد الشيخ" },
++];
++
++/** The contact page is not built yet; flip this when /contact exists. */
++export const CONTACT_PAGE_READY = false;
++
++/** Footer link row of the approved design. */
++export const FOOTER_LINKS: readonly NavItem[] = [
++  { href: "/", label: "الرئيسية" },
++  { href: "/about", label: "التعريف بالشيخ" },
++  { href: "/library?type=participation", label: "المشاركات العلمية" },
++  ...(CONTACT_PAGE_READY ? [{ href: "/contact", label: "التواصل معنا" }] : []),
++];
+ 
+ /** Policy pages: shown in the footer only once published with content. */
+ export const POLICY_ROUTES: Record<string, string> = {
+   privacy: "/privacy",
+   terms: "/terms",
+   copyright_policy: "/copyright",
+-};
+\ No newline at end of file
++};
+diff --git a/src/lib/content/public.ts b/src/lib/content/public.ts
+index 1b88628..bc25be2 100644
+--- a/src/lib/content/public.ts
++++ b/src/lib/content/public.ts
+@@ -66,4 +66,10 @@ export async function listPublishedPageLinksCached() {
+   cacheLife("minutes");
+   cacheTag("content", "pages");
+   return q.listPublishedPageLinks(getDb());
+-}
+\ No newline at end of file
++}
++export async function getSocialLinksCached() {
++  "use cache";
++  cacheLife("minutes");
++  cacheTag("content");
++  return q.getSocialLinks(getDb());
++}
+diff --git a/src/lib/content/queries.ts b/src/lib/content/queries.ts
+index 4b68762..996da7c 100644
+--- a/src/lib/content/queries.ts
++++ b/src/lib/content/queries.ts
+@@ -19,6 +19,7 @@ import {
+ } from "drizzle-orm";
+ import * as s from "@/lib/db/schema";
+ import type { AnyDb } from "@/lib/db/types";
++import { safeHttpUrl } from "@/lib/format";
+ import { normalizeArabic } from "@/lib/search/arabic";
+ 
+ export const PAGE_SIZE = 12;
+@@ -463,4 +464,23 @@ export async function getHomeData(db: AnyDb): Promise<HomeData> {
+     participations,
+     aboutExcerpt: body ? (body.length > 320 ? `${body.slice(0, 320).trimEnd()}…` : body) : null,
+   };
+-}
+\ No newline at end of file
++}
++
++/** Social profile links managed in the admin settings (keys social.youtube / social.x / social.telegram). */
++export type SocialLinks = { youtube?: string; x?: string; telegram?: string };
++
++export async function getSocialLinks(db: AnyDb): Promise<SocialLinks> {
++  const rows = await db
++    .select({ key: s.siteSettings.key, value: s.siteSettings.value })
++    .from(s.siteSettings)
++    .where(inArray(s.siteSettings.key, ["social.youtube", "social.x", "social.telegram"]));
++  const out: SocialLinks = {};
++  for (const r of rows) {
++    const url = typeof r.value === "string" ? safeHttpUrl(r.value) : null;
++    if (!url) continue; // only well-formed http(s) links are ever shown
++    if (r.key === "social.youtube") out.youtube = url;
++    if (r.key === "social.x") out.x = url;
++    if (r.key === "social.telegram") out.telegram = url;
++  }
++  return out;
++}
+diff --git a/src/lib/format.ts b/src/lib/format.ts
+index ba5ebd8..826e560 100644
+--- a/src/lib/format.ts
++++ b/src/lib/format.ts
+@@ -56,4 +56,20 @@ export const SOURCE_KIND_LABELS: Record<string, string> = {
+   audio: "صوت",
+   file: "ملف",
+   external_link: "رابط",
+-};
+\ No newline at end of file
++};
++const isoDate = (d: Date) => d.toISOString().slice(0, 10);
++
++/** Numeric date used on material cards: 2024-05-12 (UTC, like formatDate). */
++export function formatDateNumeric(d: Date | null | undefined): string | null {
++  return d ? isoDate(d) : null;
++}
++
++/** 2700 -> "45 دقيقة", 4800 -> "ساعة 20 دقيقة", 3600 -> "ساعة". Under a minute -> null. */
++export function formatDurationWords(seconds: number | null | undefined): string | null {
++  if (seconds == null || seconds < 60) return null;
++  const h = Math.floor(seconds / 3600);
++  const m = Math.floor((seconds % 3600) / 60);
++  const hours = h === 0 ? "" : h === 1 ? "ساعة" : h === 2 ? "ساعتان" : `${h} ساعات`;
++  const mins = m === 0 ? "" : `${m} دقيقة`;
++  return [hours, mins].filter(Boolean).join(" ");
++}

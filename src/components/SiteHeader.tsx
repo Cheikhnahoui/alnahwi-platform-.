@@ -1,35 +1,34 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { BookOpen } from "lucide-react";
+import { Search } from "lucide-react";
+import { BrandMark } from "./BrandMark";
 import { MainNav } from "./MainNav";
 import { NAV_ITEMS } from "./nav-items";
 
 export function SiteHeader() {
   return (
-    <header className="relative border-b border-border bg-background">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-4 py-3 sm:px-6">
-        <Link href="/" className="flex items-center gap-3" aria-label="الصفحة الرئيسية">
-          {/* Provisional logo slot: replace with the official identity once approved. */}
-          <span
-            aria-hidden
-            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-md border border-border text-accent"
-          >
-            <BookOpen size={22} strokeWidth={1.6} />
-          </span>
+    <header className="relative z-20 h-[59px] border-b border-line bg-[#f8f7f2] shadow-[0_1px_6px_rgba(16,67,60,0.05)]">
+      <div className="mx-auto flex h-full max-w-[1280px] items-center gap-4 px-4 lg:px-[72px]">
+        <Link href="/" className="flex shrink-0 items-center gap-2.5" aria-label="الصفحة الرئيسية">
+          <BrandMark size={38} className="text-ink" />
           <span className="leading-tight">
-            <span className="block text-[0.8rem] text-muted-foreground">الموقع الرسمي</span>
-            <span className="block text-base font-bold sm:text-lg">الشيخ عبد الرحمن النحوي</span>
+            <span className="block text-[11px] text-[#3b4a4a]">الموقع الرسمي للشيخ</span>
+            <span className="block text-[14px] font-bold text-ink">عبد الرحمن النحوي</span>
           </span>
         </Link>
-        {/* usePathname() inside MainNav needs a Suspense boundary; the fallback is the same links, unhighlighted. */}
+
+        {/* usePathname()/useSearchParams() inside MainNav need a Suspense boundary; the fallback is the same links, unhighlighted. */}
         <Suspense
           fallback={
-            <nav aria-label="التنقل الرئيسي" className="hidden items-center gap-1 md:flex">
+            <nav
+              aria-label="التنقل الرئيسي"
+              className="hidden flex-1 items-center justify-center gap-[30px] lg:flex"
+            >
               {NAV_ITEMS.map((i) => (
                 <Link
                   key={i.href}
                   href={i.href}
-                  className="rounded-md px-3 py-2 text-[0.95rem] text-foreground/80"
+                  className="text-[12px] font-semibold text-[#26413b]"
                 >
                   {i.label}
                 </Link>
@@ -39,6 +38,32 @@ export function SiteHeader() {
         >
           <MainNav items={NAV_ITEMS} />
         </Suspense>
+
+        <form
+          action="/library"
+          method="get"
+          role="search"
+          className="hidden h-8 w-[180px] shrink-0 items-center rounded-full border border-[#e3dfd6] bg-[#fbfaf7] ps-4 pe-1 lg:flex"
+        >
+          <label htmlFor="site-search" className="sr-only">
+            ابحث في الموقع
+          </label>
+          <input
+            id="site-search"
+            name="q"
+            type="search"
+            maxLength={100}
+            placeholder="ابحث في الموقع..."
+            className="min-w-0 flex-1 bg-transparent text-[11px] text-foreground outline-none placeholder:text-[#8a8a85]"
+          />
+          <button
+            type="submit"
+            aria-label="بحث"
+            className="inline-flex h-7 w-7 items-center justify-center rounded-full text-ink"
+          >
+            <Search aria-hidden size={15} />
+          </button>
+        </form>
       </div>
     </header>
   );

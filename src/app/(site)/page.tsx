@@ -4,7 +4,8 @@ import { connection } from "next/server";
 import { ContentGrid } from "@/components/ContentGrid";
 import { EmptyState } from "@/components/EmptyState";
 import { LoadingState } from "@/components/LoadingState";
-import { SearchBar } from "@/components/SearchBar";
+import { HomeHero } from "@/components/HomeHero";
+import { TypeTiles } from "@/components/TypeTiles";
 import { SectionHeading } from "@/components/SectionHeading";
 import { getHomeDataCached } from "@/lib/content/public";
 import { formatDate } from "@/lib/format";
@@ -20,27 +21,14 @@ const KIND_LABELS: Record<string, string> = {
 export default function HomePage() {
   return (
     <>
-      <section className="relative overflow-hidden border-b border-border">
-        <div
-          aria-hidden
-          className="pattern-star absolute inset-y-0 start-auto end-0 w-2/3 sm:w-1/2"
-        />
-        <div className="relative mx-auto max-w-6xl px-4 py-14 sm:px-6 sm:py-20">
-          <h1 className="max-w-2xl text-3xl font-bold leading-tight sm:text-5xl sm:leading-tight">
-            الموقع الرسمي للشيخ عبد الرحمن النحوي
-          </h1>
-          <p className="mt-4 max-w-xl text-lg text-muted-foreground">
-            مكتبة علمية رقمية تجمع المواد العلمية المتاحة وتنظمها، لتصل إليها بالبحث أو بالتصنيف.
-          </p>
-          <div className="mt-8 max-w-2xl">
-            <SearchBar size="lg" />
-          </div>
-        </div>
+      <HomeHero />
+      <section aria-label="أنواع المواد" className="mx-auto w-full max-w-[1104px] px-4 pt-[34px]">
+        <TypeTiles />
       </section>
 
       <Suspense
         fallback={
-          <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6">
+          <div className="mx-auto max-w-[1104px] px-4 py-10">
             <LoadingState />
           </div>
         }
@@ -57,7 +45,7 @@ async function HomeSections() {
 
   if (d.totalPublished === 0 && !d.aboutExcerpt && d.participations.length === 0) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+      <div className="mx-auto max-w-[1104px] px-4 py-12">
         <EmptyState
           title="لا توجد مواد منشورة بعد"
           description="ستظهر المواد العلمية والأقسام هنا عند نشرها."
@@ -66,7 +54,7 @@ async function HomeSections() {
     );
   }
 
-  const section = "mx-auto w-full max-w-6xl px-4 pt-12 sm:px-6";
+  const section = "mx-auto w-full max-w-[1104px] px-4 pt-[27px]";
   return (
     <div className="pb-4">
       {d.aboutExcerpt && (
@@ -81,29 +69,29 @@ async function HomeSections() {
 
       {d.latest.length > 0 && (
         <section className={section}>
-          <SectionHeading title="أحدث المواد" href="/library" />
-          <ContentGrid items={d.latest} />
+          <SectionHeading title="أحدث المواد العلمية" href="/library" />
+          <ContentGrid items={d.latest.slice(0, 4)} columns={4} />
         </section>
       )}
 
       {d.featured.length > 0 && (
         <section className={section}>
           <SectionHeading title="مواد مختارة" />
-          <ContentGrid items={d.featured} />
+          <ContentGrid items={d.featured} columns={4} />
         </section>
       )}
 
       {d.lectures.length > 0 && (
         <section className={section}>
           <SectionHeading title="المحاضرات والدروس" href="/library?type=lecture" />
-          <ContentGrid items={d.lectures} />
+          <ContentGrid items={d.lectures} columns={4} />
         </section>
       )}
 
       {d.writings.length > 0 && (
         <section className={section}>
           <SectionHeading title="الكتب والبحوث والمقالات" href="/library?type=research" />
-          <ContentGrid items={d.writings} />
+          <ContentGrid items={d.writings} columns={4} />
         </section>
       )}
 
@@ -151,7 +139,7 @@ async function HomeSections() {
         <section className={`${section} text-center`}>
           <Link
             href="/library"
-            className="inline-block rounded-md bg-accent px-8 py-3 text-lg font-semibold text-accent-foreground hover:opacity-90"
+            className="inline-block rounded-md bg-brand px-8 py-3 text-lg font-semibold text-white hover:opacity-90"
           >
             تصفّح المكتبة كاملة ({d.totalPublished})
           </Link>

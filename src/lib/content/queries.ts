@@ -19,6 +19,7 @@ import {
 } from "drizzle-orm";
 import * as s from "@/lib/db/schema";
 import type { AnyDb } from "@/lib/db/types";
+import { safeHttpUrl } from "@/lib/format";
 import { normalizeArabic } from "@/lib/search/arabic";
 
 export const PAGE_SIZE = 12;
@@ -463,4 +464,23 @@ export async function getHomeData(db: AnyDb): Promise<HomeData> {
     participations,
     aboutExcerpt: body ? (body.length > 320 ? `${body.slice(0, 320).trimEnd()}…` : body) : null,
   };
+}
+
+/** Social profile links managed in the admin settings (keys social.youtube / social.x / social.telegram). */
+export type SocialLinks = { youtube?: string; x?: string; telegram?: string };
+
+export async function getSocialLinks(db: AnyDb): Promise<SocialLinks> {
+  const rows = await db
+    .select({ key: s.siteSettings.key, value: s.siteSettings.value })
+    .from(s.siteSettings)
+    .where(inArray(s.siteSettings.key, ["social.youtube", "social.x", "social.telegram"]));
+  const out: SocialLinks = {};
+  for (const r of rows) {
+    const url = typeof r.value === "string" ? safeHttpUrl(r.value) : null;
+    if (!url) continue; // only well-formed http(s) links are ever shown
+    if (r.key === "social.youtube") out.youtube = url;
+    if (r.key === "social.x") out.x = url;
+    if (r.key === "social.telegram") out.telegram = url;
+  }
+  return out;
 }

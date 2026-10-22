@@ -67,3 +67,9 @@ export async function listPublishedPageLinksCached() {
   cacheTag("content", "pages");
   return q.listPublishedPageLinks(getDb());
 }
+export async function getSocialLinksCached() {
+  "use cache";
+  cacheLife("minutes");
+  cacheTag("content");
+  return q.getSocialLinks(getDb());
+}

@@ -5,6 +5,8 @@
 @import "@fontsource/ibm-plex-sans-arabic/arabic-700.css";
 @import "@fontsource/ibm-plex-sans-arabic/latin-400.css";
 @import "@fontsource/ibm-plex-sans-arabic/latin-600.css";
+@import "@fontsource/aref-ruqaa/arabic-400.css";
+@import "@fontsource/aref-ruqaa/arabic-700.css";
 
 /*
  * Design tokens. White surfaces, near-black text, grey borders and one calm
@@ -20,6 +22,14 @@
   --accent: #1f5f5b;
   --accent-foreground: #ffffff;
   --focus: #1f5f5b;
+
+  /* Home / public-site design tokens (taken from the approved reference design). */
+  --paper: #f9f8f4;
+  --ink: #0e4437;
+  --brand: #10433c;
+  --footer: #153e38;
+  --gold: #a07d3e;
+  --line: #e8e3dd;
 }
 
 @theme inline {
@@ -30,6 +40,14 @@
   --color-border: var(--border);
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
+  --color-paper: var(--paper);
+  --color-ink: var(--ink);
+  --color-brand: var(--brand);
+  --color-footer: var(--footer);
+  --color-gold: var(--gold);
+  --color-line: var(--line);
+  --font-calligraphy: "Aref Ruqaa", "IBM Plex Sans Arabic", serif;
+  --shadow-card: 0 1px 3px rgba(16, 67, 60, 0.06), 0 6px 16px rgba(16, 67, 60, 0.04);
   --font-sans: "IBM Plex Sans Arabic", system-ui, "Segoe UI", Tahoma, sans-serif;
 }
 
@@ -71,4 +89,26 @@ body {
 .pattern-star {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64' viewBox='0 0 64 64' fill='none' stroke='%231f5f5b' stroke-opacity='.16' stroke-width='1'%3E%3Crect x='16' y='16' width='32' height='32'/%3E%3Crect x='16' y='16' width='32' height='32' transform='rotate(45 32 32)'/%3E%3C/svg%3E");
   mask-image: linear-gradient(to right, #000 0%, transparent 80%);
+}
+
+/*
+ * Home hero surface. The reference uses a blurred library photograph; until the
+ * original image is supplied this is approximated with soft gradients (warm
+ * beige at the start edge, cream in the middle, light wood at the end edge).
+ */
+.hero-surface {
+  background:
+    linear-gradient(to left, rgba(205, 168, 128, 0.55) 0%, rgba(216, 187, 153, 0) 17%),
+    linear-gradient(
+      to right,
+      rgba(224, 211, 194, 0.95) 0%,
+      rgba(235, 227, 214, 0.7) 12%,
+      rgba(242, 237, 231, 0) 32%
+    ),
+    #f4f0ea;
+}
+
+/* Eight-point-star lattice, very light, used in the hero and the footer corners. */
+.pattern-lattice {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='56' height='56' viewBox='0 0 56 56' fill='none' stroke='%23a07d3e' stroke-width='1'%3E%3Crect x='14' y='14' width='28' height='28'/%3E%3Crect x='14' y='14' width='28' height='28' transform='rotate(45 28 28)'/%3E%3C/svg%3E");
 }
