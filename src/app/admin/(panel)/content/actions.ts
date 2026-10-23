@@ -1,5 +1,7 @@
 "use server";
 
+import { releaseStoredFiles } from "@/lib/storage/files";
+import { vercelBlobStore } from "@/lib/storage/store";
 import { redirect } from "next/navigation";
 import { revalidatePath, updateTag } from "next/cache";
 import { getDb } from "@/lib/db";
@@ -86,7 +88,8 @@ export async function updateContentAction(_prev: FormState, fd: FormData): Promi
   try {
     const bad = await playableSourceErrors(getDb(), id, parsed.data.sources);
     if (Object.keys(bad).length) return { errors: bad, values, nonce: crypto.randomUUID() };
-    await updateContent(getDb(), actorOf(user), id, parsed.data);
+    const done = await updateContent(getDb(), actorOf(user), id, parsed.data);
+    await releaseQuietly(done.releasedFileIds);
   } catch (e) {
     return failure(e, values);
   }
@@ -118,6 +121,15 @@ export async function transitionAction(
   return { ok: true, message: DONE[action] };
 }
 
+/** Removes files an edit/delete stopped using; logs instead of failing a change that already saved. */
+async function releaseQuietly(ids: string[]) {
+  try {
+    await releaseStoredFiles(getDb(), vercelBlobStore, ids);
+  } catch (e) {
+    console.error("Releasing stored files failed:", e instanceof Error ? e.message : e);
+  }
+}
+
 export async function deleteContentAction(
   _prev: WorkflowActionState,
   fd: FormData,
@@ -126,7 +138,9 @@ export async function deleteContentAction(
   const id = String(fd.get("id") ?? "");
   let slug: string;
   try {
-    ({ slug } = await deleteContent(getDb(), actorOf(user), id));
+    const done = await deleteContent(getDb(), actorOf(user), id);
+    slug = done.slug;
+    await releaseQuietly(done.releasedFileIds);
   } catch (e) {
     if (e instanceof PermissionError || e instanceof WorkflowError) {
       return { ok: false, message: e.message };

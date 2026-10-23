@@ -134,6 +134,31 @@ Sign-in, sessions, roles and the protected panel shell are built (more admin pag
 - Visiting `/admin` without a session returns a loading shell (HTTP 200) that then redirects to the sign-in page in the browser, rather than an HTTP redirect. No admin data is included in that response.
 - Layout was verified by markup and HTTP checks only, not in a real browser or on a phone; please review it visually.
 
+## Video and audio on material pages
+
+Each material can have several sources (the **Sources** block of the material form). Two ways to add a video or audio:
+
+1. **A link.** Choose the source type "Video" or "Audio" and paste a YouTube or Vimeo link, or a direct `https://` link to an `mp4`/`webm`/`mp3`/`m4a`/`ogg` file. The player appears on the public page; the link stays listed under "Sources". Only these hosts and file types are embedded (never an arbitrary page). A video/audio link that cannot be played is refused when saving, with a message saying what to use instead (materials saved before this rule stay editable).
+2. **A file uploaded from your computer** (optional, needs a file store): the "upload a file" button on a source row. The file goes from the browser straight to storage, so large files work on Vercel. Allowed: `mp4`, `webm`, `mp3`, `m4a`, `ogg`, `wav`, up to 500 MB. For `mp4` use H.264/AAC so it plays in every browser.
+
+### Enabling uploads (Vercel Blob)
+
+1. In Vercel open the project, **Storage → Create → Blob**, choose a **Public** store and connect it to the project. Vercel adds `BLOB_READ_WRITE_TOKEN` to the project's environment variables by itself.
+2. Redeploy. Without this variable the upload button is hidden and the form says so; links keep working.
+3. For local testing, copy the same variable into `.env.local`.
+
+Good to know:
+
+- Files are **public by URL** (random, unguessable names), even while their material is a draft. Do not upload anything that must stay private.
+- Deleting a material, or removing/replacing the file in its sources, deletes the real file from storage too (unless another material still uses it).
+- A file uploaded but never saved with a material (for example the page was closed) is removed by `npm run storage:cleanup` once it is older than 24 hours. Run it now and then; it needs `DATABASE_URL` and `BLOB_READ_WRITE_TOKEN`.
+- Vercel's Hobby plan includes limited Blob storage and data transfer shared with the whole project (1 GB storage and 10 GB transfer per month at the time of writing; check Vercel's current limits). Streaming videos uses transfer, so for videos with many viewers a YouTube (unlisted) link is the cheaper option.
+- The upload code was verified here against a local stand-in for the Blob API, not against Vercel itself: do a first real upload after deploying (see "Verify after deploying" below).
+
+### Verify after deploying
+
+Sign in, create a material, upload a small `mp4`, save, publish, open the public page in a private window and press play. Then remove the file from the material and save: the file should disappear from the Blob store (Vercel → Storage → your store → Browser).
+
 ## Deploying with Supabase + Vercel
 
 1. **Supabase:** create a project (pick a region near your visitors; use the same region for Vercel Functions).

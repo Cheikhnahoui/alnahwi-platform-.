@@ -57,6 +57,8 @@ export function toFormValues(full: AdminContentFull): FormValues {
     v[`sources.${i}.url`] = src.url;
     v[`sources.${i}.sourceName`] = src.sourceName ?? "";
     v[`sources.${i}.isDownloadable`] = src.isDownloadable ? "on" : "";
+    v[`sources.${i}.storedFileId`] = src.storedFileId ?? "";
+    v[`sources.${i}.fileLabel`] = src.fileLabel ?? "";
   });
   return v;
 }

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ContentForm } from "@/components/ContentForm";
+import { uploadsConfigured } from "@/lib/storage/store";
 import { listCategoryOptions, listTypeOptions } from "@/lib/admin/content";
 import { EMPTY_FORM } from "@/lib/admin/content-form-values";
 import { hasPermission } from "@/lib/admin/workflow";
@@ -25,6 +26,7 @@ export default async function NewContentPage() {
       </p>
       <div className="max-w-3xl">
         <ContentForm
+          uploadsEnabled={uploadsConfigured()}
           action={createContentAction}
           types={types}
           categories={categories}

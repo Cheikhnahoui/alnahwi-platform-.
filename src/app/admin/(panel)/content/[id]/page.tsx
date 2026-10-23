@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ContentForm } from "@/components/ContentForm";
+import { uploadsConfigured } from "@/lib/storage/store";
 import { DeleteContentButton } from "@/components/DeleteContentButton";
 import { StatusBadge } from "@/components/StatusBadge";
 import { WorkflowPanel } from "@/components/WorkflowPanel";
@@ -82,6 +83,7 @@ export default async function EditContentPage({ params, searchParams }: Props) {
             </p>
           )}
           <ContentForm
+            uploadsEnabled={uploadsConfigured()}
             action={updateContentAction}
             id={item.id}
             types={types}

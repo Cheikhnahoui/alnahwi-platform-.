@@ -12,6 +12,8 @@ export type SourceInput = {
   sourceName: string | null;
   isPrimary: boolean;
   isDownloadable: boolean;
+  /** Set when the source is a file uploaded to our storage (see lib/storage). */
+  storedFileId?: string | null;
 };
 
 export type ContentData = {
@@ -125,6 +127,10 @@ export function parseContentForm(fd: FormData): ParseResult {
       errors[`sources.${i}.kind`] = "نوع المصدر غير صالح.";
     const safe = safeHttpUrl(url);
     if (!safe) errors[`sources.${i}.url`] = "رابط المصدر يجب أن يبدأ بـ https:// أو http://.";
+    const storedFileId = str(`sources.${i}.storedFileId`);
+    if (storedFileId && !UUID.test(storedFileId)) {
+      errors[`sources.${i}.url`] = "الملف المرفوع غير صالح. أعد رفعه.";
+    }
     const sourceName = str(`sources.${i}.sourceName`);
     if (sourceName.length > 200) errors[`sources.${i}.sourceName`] = "اسم المصدر طويل جدًا.";
     sources.push({
@@ -133,6 +139,7 @@ export function parseContentForm(fd: FormData): ParseResult {
       sourceName: sourceName || null,
       isPrimary: primaryIdx === String(i),
       isDownloadable: fd.get(`sources.${i}.isDownloadable`) === "on",
+      storedFileId: UUID.test(storedFileId) ? storedFileId : null,
     });
   }
   if (sources.length && !sources.some((s) => s.isPrimary)) sources[0].isPrimary = true;

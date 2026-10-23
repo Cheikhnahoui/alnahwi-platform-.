@@ -2,10 +2,12 @@
 
 import { useActionState } from "react";
 import type { FormState } from "@/app/admin/(panel)/content/actions";
+import { SourceUpload } from "@/components/SourceUpload";
 import type { CategoryOption } from "@/lib/admin/content";
 import type { FormValues } from "@/lib/admin/content-form-values";
 import { MAX_SOURCES } from "@/lib/admin/content-constants";
 import { PERMISSION_LABELS, SOURCE_KIND_LABELS } from "@/lib/format";
+import { MAX_UPLOAD_MB } from "@/lib/storage/media-types";
 
 type Props = {
   action: (prev: FormState, fd: FormData) => Promise<FormState>;
@@ -16,6 +18,8 @@ type Props = {
   canFeature: boolean;
   disabled?: boolean;
   submitLabel: string;
+  /** True when a file store is linked, so sources can be uploaded as files. */
+  uploadsEnabled?: boolean;
 };
 
 const input =
@@ -59,6 +63,7 @@ export function ContentForm({
   canFeature,
   disabled,
   submitLabel,
+  uploadsEnabled = false,
 }: Props) {
   const [state, formAction, pending] = useActionState<FormState, FormData>(action, {});
   const v = state.values ?? initial;
@@ -271,6 +276,11 @@ export function ContentForm({
             مباشرًا لملف (mp4 / webm للفيديو، mp3 / m4a / ogg للصوت) يبدأ بـ https://. سيُشغَّل داخل
             صفحة المادة، ويبقى رابط المصدر ظاهرًا في قسم «المصادر».
           </p>
+          <p className="text-sm text-muted-foreground">
+            {uploadsEnabled
+              ? `يمكنك أيضًا رفع ملف فيديو أو صوت مباشرة من جهازك (حتى ${MAX_UPLOAD_MB} ميغابايت، بصيغة mp4 أو webm أو mp3 أو m4a أو ogg أو wav). الأفضل لـ mp4 أن يكون بترميز H.264 ليعمل في كل المتصفحات.`
+              : "الرفع المباشر للملفات غير مفعّل بعد: يتطلب ربط مخزن Vercel Blob بالمشروع (راجع README). يمكنك حاليًا استخدام الروابط."}
+          </p>
           <ul className="space-y-3">
             {Array.from({ length: sourceRows }, (_, i) => (
               <li
@@ -309,6 +319,13 @@ export function ContentForm({
                   aria-label={`اسم المصدر ${i + 1}`}
                   className={input}
                 />
+                {uploadsEnabled && (
+                  <SourceUpload
+                    index={i}
+                    initialFileId={val(`sources.${i}.storedFileId`)}
+                    initialLabel={val(`sources.${i}.fileLabel`)}
+                  />
+                )}
                 <div className="flex flex-wrap gap-4 text-sm sm:col-span-3">
                   <label className="flex items-center gap-2">
                     <input

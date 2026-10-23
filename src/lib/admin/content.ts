@@ -11,6 +11,7 @@ import type { PermissionKey } from "@/lib/auth/permissions";
 import * as s from "@/lib/db/schema";
 import type { AnyDb } from "@/lib/db/types";
 import { writeAudit } from "./audit";
+import { fileLabel } from "@/lib/storage/media-types";
 import { unplayableSourceErrors, type ContentData, type SourceInput } from "./content-input";
 import { slugify } from "./slug";
 import { hasPermission, workflowState, type Actor, type Transition } from "./workflow";
@@ -78,6 +79,30 @@ async function assertReferences(db: AnyDb, data: ContentData) {
       throw new ValidationError({ categoryIds: "أحد التصنيفات غير موجود." });
     }
   }
+  // A source that claims to be an uploaded file must match a file really registered in storage
+  // (same public URL), so a tampered form cannot attach someone else's file or any other URL.
+  const fileIds = data.sources.flatMap((x) => (x.storedFileId ? [x.storedFileId] : []));
+  if (fileIds.length) {
+    const rows = await db.select().from(s.storedFiles).where(inArray(s.storedFiles.id, fileIds));
+    const errors: Record<string, string> = {};
+    data.sources.forEach((src, i) => {
+      if (!src.storedFileId) return;
+      const row = rows.find((r) => r.id === src.storedFileId);
+      if (!row || row.visibility !== "public" || row.storageKey !== src.url) {
+        errors[`sources.${i}.url`] = "الملف المرفوع غير صالح أو لم يعد موجودًا. أعد رفعه.";
+      }
+    });
+    if (Object.keys(errors).length) throw new ValidationError(errors);
+  }
+}
+
+/** Ids of the uploaded files an item's sources currently use. */
+async function sourceFileIds(db: AnyDb, itemId: string): Promise<string[]> {
+  const rows = await db
+    .select({ id: s.contentSources.storedFileId })
+    .from(s.contentSources)
+    .where(eq(s.contentSources.contentItemId, itemId));
+  return rows.flatMap((r) => (r.id ? [r.id] : []));
 }
 
 /** Replaces categories, tags, sources and outgoing relations of one item. */
@@ -115,6 +140,7 @@ async function writeRelations(db: AnyDb, itemId: string, data: ContentData) {
         sourceName: src.sourceName,
         isPrimary: src.isPrimary,
         isDownloadable: src.isDownloadable,
+        storedFileId: src.storedFileId ?? null,
         sortOrder: i,
       })),
     );
@@ -219,7 +245,9 @@ export async function updateContent(db: AnyDb, actor: Actor, id: string, data: C
         updatedBy: actor.id,
       })
       .where(eq(s.contentItems.id, id));
+    const filesBefore = await sourceFileIds(tx, id);
     await writeRelations(tx, id, data);
+    const filesAfter = new Set(await sourceFileIds(tx, id));
     await refreshSearchText(tx, id);
     await writeAudit(tx, {
       actorId: actor.id,
@@ -228,7 +256,8 @@ export async function updateContent(db: AnyDb, actor: Actor, id: string, data: C
       entityId: id,
       metadata: { state: st },
     });
-    return { id, slug };
+    // Files this edit stopped using; the caller deletes them from storage once the edit is saved.
+    return { id, slug, releasedFileIds: filesBefore.filter((f) => !filesAfter.has(f)) };
   });
 }
 
@@ -334,6 +363,7 @@ export async function deleteContent(db: AnyDb, actor: Actor, id: string) {
   return db.transaction(async (tx) => {
     const [item] = await tx.select().from(s.contentItems).where(eq(s.contentItems.id, id));
     if (!item) throw new WorkflowError("المادة غير موجودة أو حُذفت من قبل.");
+    const releasedFileIds = await sourceFileIds(tx, id);
     await tx.delete(s.contentItems).where(eq(s.contentItems.id, id));
     await writeAudit(tx, {
       actorId: actor.id,
@@ -342,7 +372,7 @@ export async function deleteContent(db: AnyDb, actor: Actor, id: string) {
       entityId: id,
       metadata: { title: item.title, slug: item.slug, state: workflowState(item) },
     });
-    return { id, slug: item.slug };
+    return { id, slug: item.slug, releasedFileIds };
   });
 }
 
@@ -424,14 +454,14 @@ export type AdminContentFull = {
   categoryIds: string[];
   tags: string[];
   relatedSlugs: string[];
-  sources: (SourceInput & { id: string })[];
+  sources: (SourceInput & { id: string; fileLabel?: string })[];
 };
 
 export async function getAdminContent(db: AnyDb, id: string): Promise<AdminContentFull | null> {
   if (!/^[0-9a-f-]{36}$/i.test(id)) return null;
   const [item] = await db.select().from(s.contentItems).where(eq(s.contentItems.id, id));
   if (!item) return null;
-  const [cats, tagRows, srcs, rels] = await Promise.all([
+  const [cats, tagRows, srcs, rels, files] = await Promise.all([
     db
       .select({ id: s.contentCategories.categoryId })
       .from(s.contentCategories)
@@ -452,6 +482,15 @@ export async function getAdminContent(db: AnyDb, id: string): Promise<AdminConte
       .from(s.contentRelations)
       .innerJoin(s.contentItems, eq(s.contentItems.id, s.contentRelations.relatedItemId))
       .where(eq(s.contentRelations.contentItemId, id)),
+    db
+      .select({
+        id: s.storedFiles.id,
+        name: s.storedFiles.originalName,
+        size: s.storedFiles.sizeBytes,
+      })
+      .from(s.contentSources)
+      .innerJoin(s.storedFiles, eq(s.storedFiles.id, s.contentSources.storedFileId))
+      .where(eq(s.contentSources.contentItemId, id)),
   ]);
   return {
     item,
@@ -468,6 +507,11 @@ export async function getAdminContent(db: AnyDb, id: string): Promise<AdminConte
               sourceName: x.sourceName,
               isPrimary: x.isPrimary,
               isDownloadable: x.isDownloadable,
+              storedFileId: x.storedFileId,
+              fileLabel: (() => {
+                const f = files.find((y) => y.id === x.storedFileId);
+                return f ? fileLabel(f.name, f.size) : undefined;
+              })(),
             },
           ]
         : [],
