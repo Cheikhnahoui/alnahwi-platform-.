@@ -2,8 +2,8 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { NamePlate } from "./NamePlate";
 /**
- * Official portrait slot. The picture is only shown when a file named
- * public/images/sheikh-portrait.(webp|png|jpg) exists.
+ * Official portrait slot.
+ * The original desktop design is preserved.
  */
 const CANDIDATES = ["webp", "png", "jpg"] as const;
 function findPortrait(): string | null {
@@ -20,7 +20,7 @@ export function HeroPortrait() {
   if (!src) return null;
   return (
     <>
-      {/* Original desktop design: unchanged */}
+      {/* Desktop: original design preserved */}
       <div
         aria-hidden={false}
         className="pointer-events-none absolute inset-0 hidden min-[1180px]:block"
@@ -43,15 +43,15 @@ export function HeroPortrait() {
         />
         <NamePlate className="absolute start-[96px] top-[71px] h-[110px] w-[136px]" />
       </div>
-      {/* Mobile design only */}
+      {/* Mobile: portrait in normal document flow */}
       <div
-        className="relative mx-auto mt-5 h-[270px] w-full max-w-[320px] min-[1180px]:hidden"
         aria-hidden={false}
+        className="relative mx-auto mt-2 h-[280px] w-full max-w-[320px] min-[1180px]:hidden"
       >
         {/* Decorative gold frame */}
         <svg
           aria-hidden
-          className="absolute bottom-0 start-1/2 h-[230px] w-[244px] -translate-x-1/2 text-gold"
+          className="absolute bottom-0 start-1/2 h-[235px] w-[250px] -translate-x-1/2 text-gold"
           viewBox="0 0 283 267"
           fill="none"
           stroke="currentColor"
@@ -63,9 +63,9 @@ export function HeroPortrait() {
         <img
           src={src}
           alt="صورة الشيخ عبد الرحمن النحوي"
-          className="absolute bottom-0 start-1/2 h-[250px] w-[220px] -translate-x-1/2 object-contain object-bottom"
+          className="absolute bottom-0 start-1/2 h-[270px] w-[230px] -translate-x-1/2 object-contain object-bottom"
         />
-        <NamePlate className="absolute end-0 top-0 h-[82px] w-[108px]" />
+        <NamePlate className="absolute end-2 top-1 h-[78px] w-[104px]" />
       </div>
     </>
   );
