@@ -1,0 +1,160 @@
+diff --git a/src/app/(site)/page.tsx b/src/app/(site)/page.tsx
+index cae1ba4..22163b0 100644
+--- a/src/app/(site)/page.tsx
++++ b/src/app/(site)/page.tsx
+@@ -18,7 +18,35 @@ const KIND_LABELS: Record<string, string> = {
+   other: "مشاركة",
+ };
+ 
++const SITE = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://abdrahman.online").replace(/\/$/, "");
++const JSON_LD = {
++  "@context": "https://schema.org",
++  "@graph": [
++    {
++      "@type": "WebSite",
++      name: "الموقع الرسمي للشيخ عبد الرحمن النحوي",
++      url: SITE,
++      inLanguage: "ar",
++      potentialAction: {
++        "@type": "SearchAction",
++        target: `${SITE}/library?q={search_term_string}`,
++        "query-input": "required name=search_term_string",
++      },
++    },
++    {
++      "@type": "Person",
++      name: "عبد الرحمن النحوي",
++      alternateName: ["الشيخ عبد الرحمن النحوي", "عبدالرحمن النحوي"],
++      url: SITE,
++    },
++  ],
++};
++
+ export default function HomePage() {
+   return (
+     <>
++      <script
++        type="application/ld+json"
++        dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD).replace(/</g, "\\u003c") }}
++      />
+       <HomeHero />
+diff --git a/src/app/layout.tsx b/src/app/layout.tsx
+index 4b4fd08..3c9d63d 100644
+--- a/src/app/layout.tsx
++++ b/src/app/layout.tsx
+@@ -5,9 +5,20 @@ const SITE_NAME = "الموقع الرسمي للشيخ عبد الرحمن ال
+ 
+ export const metadata: Metadata = {
+   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+-  title: { default: SITE_NAME, template: `%s | ${SITE_NAME}` },
+-  description: "مكتبة علمية رقمية تجمع المواد العلمية المتاحة وتنظمها.",
+-  openGraph: { siteName: SITE_NAME, locale: "ar", type: "website" },
++  title: {
++    default: "الشيخ عبد الرحمن النحوي | الموقع الرسمي",
++    template: `%s | الشيخ عبد الرحمن النحوي`,
++  },
++  description:
++    "الموقع الرسمي للشيخ عبد الرحمن النحوي (عبدالرحمن النحوي): مكتبة علمية رقمية تجمع المحاضرات والدروس والمواد الصوتية والبحوث والمقالات والقصائد المتاحة، مع العناية بالمصادر وحقوق النشر.",
++  alternates: { canonical: "/" },
++  openGraph: {
++    siteName: SITE_NAME,
++    locale: "ar",
++    type: "website",
++    url: "/",
++    title: "الشيخ عبد الرحمن النحوي | الموقع الرسمي",
++  },
+ };
+ 
+ export const viewport: Viewport = { width: "device-width", initialScale: 1 };
+diff --git a/src/app/robots.ts b/src/app/robots.ts
+new file mode 100644
+index 0000000..6a82d5d
+--- /dev/null
++++ b/src/app/robots.ts
+@@ -0,0 +1,10 @@
++import type { MetadataRoute } from "next";
++
++const SITE = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://abdrahman.online").replace(/\/$/, "");
++
++export default function robots(): MetadataRoute.Robots {
++  return {
++    rules: { userAgent: "*", allow: "/", disallow: ["/admin", "/api/"] },
++    sitemap: `${SITE}/sitemap.xml`,
++  };
++}
+diff --git a/src/app/sitemap.ts b/src/app/sitemap.ts
+new file mode 100644
+index 0000000..1839a9c
+--- /dev/null
++++ b/src/app/sitemap.ts
+@@ -0,0 +1,39 @@
++import type { MetadataRoute } from "next";
++import { connection } from "next/server";
++import { getDb } from "@/lib/db";
++import { listSitemapData } from "@/lib/content/sitemap";
++import { POLICY_ROUTES } from "@/components/nav-items";
++
++const SITE = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://abdrahman.online").replace(/\/$/, "");
++
++export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
++  await connection(); // keeps the database out of `next build`
++  const entries: MetadataRoute.Sitemap = [
++    { url: `${SITE}/`, changeFrequency: "daily", priority: 1 },
++    { url: `${SITE}/library`, changeFrequency: "daily", priority: 0.9 },
++    { url: `${SITE}/categories`, changeFrequency: "weekly", priority: 0.6 },
++  ];
++  try {
++    const { items, cats, pages } = await listSitemapData(getDb());
++    for (const i of items) {
++      entries.push({
++        url: `${SITE}/library/${encodeURIComponent(i.slug)}`,
++        lastModified: i.updatedAt,
++        priority: 0.8,
++      });
++    }
++    for (const c of cats) {
++      if (c.count > 0) entries.push({ url: `${SITE}/categories/${encodeURIComponent(c.slug)}` });
++      for (const k of c.children) {
++        if (k.count > 0) entries.push({ url: `${SITE}/categories/${encodeURIComponent(k.slug)}` });
++      }
++    }
++    for (const p of pages) {
++      const path = p.key === "about" ? "/about" : POLICY_ROUTES[p.key];
++      if (path) entries.push({ url: `${SITE}${path}` });
++    }
++  } catch (err) {
++    console.error("sitemap: database unavailable", err instanceof Error ? err.message : err);
++  }
++  return entries;
++}
+diff --git a/src/lib/content/sitemap.ts b/src/lib/content/sitemap.ts
+new file mode 100644
+index 0000000..a796291
+--- /dev/null
++++ b/src/lib/content/sitemap.ts
+@@ -0,0 +1,25 @@
++import { desc } from "drizzle-orm";
++import * as s from "@/lib/db/schema";
++import type { AnyDb } from "@/lib/db/types";
++import { listCategoryTree, listPublishedPageLinks } from "./queries";
++import { and, eq } from "drizzle-orm";
++
++/** Published items, categories and static pages, for sitemap.xml. */
++export async function listSitemapData(db: AnyDb) {
++  const [items, cats, pages] = await Promise.all([
++    db
++      .select({ slug: s.contentItems.slug, updatedAt: s.contentItems.updatedAt })
++      .from(s.contentItems)
++      .where(
++        and(
++          eq(s.contentItems.publicationStatus, "published"),
++          eq(s.contentItems.approvalStatus, "approved"),
++        ),
++      )
++      .orderBy(desc(s.contentItems.publishedAt))
++      .limit(5000),
++    listCategoryTree(db),
++    listPublishedPageLinks(db),
++  ]);
++  return { items, cats, pages };
++}

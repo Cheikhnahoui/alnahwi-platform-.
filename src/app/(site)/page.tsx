@@ -18,9 +18,37 @@ const KIND_LABELS: Record<string, string> = {
   other: "مشاركة",
 };
 
+const SITE = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://abdrahman.online").replace(/\/$/, "");
+const JSON_LD = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      name: "الموقع الرسمي للشيخ عبد الرحمن النحوي",
+      url: SITE,
+      inLanguage: "ar",
+      potentialAction: {
+        "@type": "SearchAction",
+        target: `${SITE}/library?q={search_term_string}`,
+        "query-input": "required name=search_term_string",
+      },
+    },
+    {
+      "@type": "Person",
+      name: "عبد الرحمن النحوي",
+      alternateName: ["الشيخ عبد الرحمن النحوي", "عبدالرحمن النحوي"],
+      url: SITE,
+    },
+  ],
+};
+
 export default function HomePage() {
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(JSON_LD).replace(/</g, "\\u003c") }}
+      />
       <HomeHero />
       <section aria-label="أنواع المواد" className="mx-auto w-full max-w-[1104px] px-4 pt-[34px]">
         <TypeTiles />
