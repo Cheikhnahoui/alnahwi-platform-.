@@ -6,4 +6,5 @@ export type AdminNavItem = { href: string; label: string; permission?: Permissio
 export const ADMIN_NAV: AdminNavItem[] = [
   { href: "/admin", label: "لوحة المعلومات" },
   { href: "/admin/content", label: "المواد", permission: "content.view_drafts" },
+  { href: "/admin/pages", label: "الصفحات", permission: "pages.edit" },
 ];
