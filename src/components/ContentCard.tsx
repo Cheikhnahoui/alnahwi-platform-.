@@ -18,14 +18,21 @@ export function ContentCard({ item }: { item: ContentListItem }) {
         {thumb ? (
           // External thumbnail hosts are not known in advance, so next/image is not used here.
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={thumb} alt="" loading="lazy" className="h-full w-full object-cover" />
+          <img
+            src={thumb}
+            alt=""
+            loading="lazy"
+            referrerPolicy="no-referrer"
+            className="h-full w-full object-cover"
+          />
         ) : (
           <div
             aria-hidden
-            className="flex h-full w-full items-center justify-center"
+            className="relative flex h-full w-full items-center justify-center"
             style={{ background: ui.tile.bg, color: ui.tile.fg }}
           >
-            <ui.Icon size={26} strokeWidth={1.4} className="opacity-50" />
+            <span className="pattern-lattice absolute inset-0 opacity-[.09]" />
+            <ui.Icon size={22} strokeWidth={1.3} className="relative opacity-35" />
           </div>
         )}
         <span

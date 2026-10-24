@@ -20,6 +20,7 @@ import {
 import * as s from "@/lib/db/schema";
 import type { AnyDb } from "@/lib/db/types";
 import { safeHttpUrl } from "@/lib/format";
+import { youtubeThumbnail } from "@/lib/media";
 import { normalizeArabic } from "@/lib/search/arabic";
 
 export const PAGE_SIZE = 12;
@@ -61,6 +62,38 @@ const listColumns = {
   typeKey: s.contentTypes.key,
   typeName: s.contentTypes.name,
 };
+
+/**
+ * Cards show a picture. An item with no picture of its own borrows the YouTube picture of its first
+ * YouTube source (the primary source first). Computed on every read, so it also applies to items
+ * saved before this existed; nothing is stored.
+ */
+async function withVideoThumbnails<T extends { id: string; thumbnailUrl: string | null }>(
+  db: AnyDb,
+  items: T[],
+): Promise<T[]> {
+  const missing = items.filter((i) => !i.thumbnailUrl).map((i) => i.id);
+  if (!missing.length) return items;
+  const rows = await db
+    .select({
+      itemId: s.contentSources.contentItemId,
+      url: s.contentSources.url,
+      kind: s.contentSources.kind,
+    })
+    .from(s.contentSources)
+    .where(inArray(s.contentSources.contentItemId, missing))
+    .orderBy(desc(s.contentSources.isPrimary), asc(s.contentSources.sortOrder));
+  const found = new Map<string, string>();
+  for (const r of rows) {
+    if (found.has(r.itemId)) continue;
+    const thumb = youtubeThumbnail(r.url, r.kind);
+    if (thumb) found.set(r.itemId, thumb);
+  }
+  return items.map((i) => {
+    const thumb = i.thumbnailUrl ? null : found.get(i.id);
+    return thumb ? { ...i, thumbnailUrl: thumb } : i;
+  });
+}
 
 export type ListParams = {
   q?: string;
@@ -173,7 +206,7 @@ export async function listContent(
     .innerJoin(s.contentTypes, eq(s.contentTypes.id, s.contentItems.contentTypeId))
     .where(cond);
 
-  return { items, total, page, pageSize };
+  return { items: await withVideoThumbnails(db, items), total, page, pageSize };
 }
 
 export async function listActiveTypes(db: AnyDb) {
@@ -270,13 +303,16 @@ export async function getContentBySlug(db: AnyDb, slug: string): Promise<Content
 
   const relatedIds = [...new Set(relRows.map((r) => (r.a === row.id ? r.b : r.a)))];
   const related = relatedIds.length
-    ? await db
-        .select(listColumns)
-        .from(s.contentItems)
-        .innerJoin(s.contentTypes, eq(s.contentTypes.id, s.contentItems.contentTypeId))
-        .where(and(inArray(s.contentItems.id, relatedIds), isPublic()))
-        .orderBy(desc(s.contentItems.publishedAt))
-        .limit(6)
+    ? await withVideoThumbnails(
+        db,
+        await db
+          .select(listColumns)
+          .from(s.contentItems)
+          .innerJoin(s.contentTypes, eq(s.contentTypes.id, s.contentItems.contentTypeId))
+          .where(and(inArray(s.contentItems.id, relatedIds), isPublic()))
+          .orderBy(desc(s.contentItems.publishedAt))
+          .limit(6),
+      )
     : [];
 
   return {
@@ -446,7 +482,8 @@ export async function getHomeData(db: AnyDb): Promise<HomeData> {
         .innerJoin(s.contentTypes, eq(s.contentTypes.id, s.contentItems.contentTypeId))
         .where(and(isPublic(), eq(s.contentItems.isFeatured, true)))
         .orderBy(desc(s.contentItems.publishedAt))
-        .limit(3),
+        .limit(3)
+        .then((rows) => withVideoThumbnails(db, rows)),
       listCategoryTree(db),
       listTypesInUse(db),
       listPublishedParticipations(db, 4),

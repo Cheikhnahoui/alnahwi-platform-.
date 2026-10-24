@@ -32,7 +32,8 @@ function startSeconds(raw: string | null): number {
   return Math.min(total, 86_400);
 }
 
-function youtube(u: URL): Player | null {
+/** The 11-character video id of any YouTube URL shape, or null. */
+function youtubeId(u: URL): string | null {
   const host = u.hostname.toLowerCase();
   let id: string | null = null;
   if (host === "youtu.be") id = u.pathname.split("/")[1] ?? null;
@@ -40,7 +41,12 @@ function youtube(u: URL): Player | null {
     if (u.pathname === "/watch") id = u.searchParams.get("v");
     else id = u.pathname.match(/^\/(?:embed|shorts|live|v)\/([^/?#]+)/)?.[1] ?? null;
   } else return null;
-  if (!id || !YT_ID.test(id)) return null;
+  return id && YT_ID.test(id) ? id : null;
+}
+
+function youtube(u: URL): Player | null {
+  const id = youtubeId(u);
+  if (!id) return null;
   const start = startSeconds(u.searchParams.get("t") ?? u.searchParams.get("start"));
   const qs = start > 0 ? `?start=${start}` : "";
   return {
@@ -85,4 +91,20 @@ export function resolvePlayer(url: string | null | undefined, kind?: string): Pl
   if (VIDEO_FILE.test(u.pathname)) return { type: "video", src: u.toString() };
   if (AUDIO_FILE.test(u.pathname)) return { type: "audio", src: u.toString() };
   return null;
+}
+
+/**
+ * Picture YouTube itself serves for a video (always exists, 480x360). Only an https YouTube URL with a
+ * valid 11-character id gives a result, and the host is fixed, so a crafted link cannot point elsewhere.
+ */
+export function youtubeThumbnail(url: string | null | undefined, kind?: string): string | null {
+  if (!url || kind === "file") return null;
+  try {
+    const u = new URL(url);
+    if (u.protocol !== "https:") return null;
+    const id = youtubeId(u);
+    return id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : null;
+  } catch {
+    return null;
+  }
 }

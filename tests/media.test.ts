@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { resolvePlayer } from "@/lib/media";
+import { resolvePlayer, youtubeThumbnail } from "@/lib/media";
 import { unplayableSourceErrors } from "@/lib/admin/content-input";
 
 const yt = (id: string, qs = "") => ({
@@ -116,5 +116,36 @@ describe("a source marked video/audio must really play (new or changed links)", 
     expect(
       Object.keys(unplayableSourceErrors([src("video", "https://example.org/other")], old)),
     ).toEqual(["sources.0.url"]);
+  });
+});
+
+describe("youtubeThumbnail: the picture borrowed for a card", () => {
+  const id = "dQw4w9WgXcQ";
+  const thumb = `https://i.ytimg.com/vi/${id}/hqdefault.jpg`;
+  it("works for every YouTube URL shape and always points at YouTube's own image host", () => {
+    for (const url of [
+      `https://www.youtube.com/watch?v=${id}&t=30`,
+      `https://youtu.be/${id}`,
+      `https://www.youtube.com/shorts/${id}`,
+      `https://www.youtube.com/embed/${id}`,
+    ]) {
+      expect(youtubeThumbnail(url, "video"), url).toBe(thumb);
+    }
+  });
+  it("gives nothing for anything else, so no other host can ever be loaded", () => {
+    for (const url of [
+      "http://youtu.be/" + id,
+      "https://example.org/watch?v=" + id,
+      "https://youtube.com.evil.example/watch?v=" + id,
+      "https://www.youtube.com/watch?v=short",
+      "https://vimeo.com/123456789",
+      "https://cdn.example.org/a.mp4",
+      "not a url",
+      "",
+    ]) {
+      expect(youtubeThumbnail(url), url).toBeNull();
+    }
+    expect(youtubeThumbnail(null)).toBeNull();
+    expect(youtubeThumbnail(`https://youtu.be/${id}`, "file")).toBeNull();
   });
 });
