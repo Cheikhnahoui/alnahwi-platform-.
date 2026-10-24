@@ -10,8 +10,9 @@ export function HomeHero() {
         className="pattern-lattice absolute inset-y-0 end-0 hidden w-[120px] opacity-[.16] [mask-image:linear-gradient(to_right,#000,transparent)] md:block"
       />
       <div className="relative mx-auto h-full max-w-[1280px] min-[1180px]:h-[281px]">
+        {portrait && <HeroPortrait src={portrait} />}
         <div
-          className={`px-4 pt-10 ${portrait ? "pb-6" : "pb-10"} min-[1180px]:absolute min-[1180px]:start-[670px] min-[1180px]:top-[34px] min-[1180px]:w-[372px] min-[1180px]:p-0`}
+          className={`px-4 pb-10 ${portrait ? "pt-6" : "pt-10"} min-[1180px]:absolute min-[1180px]:start-[670px] min-[1180px]:top-[34px] min-[1180px]:w-[372px] min-[1180px]:p-0`}
         >
           <div className="flex h-5 w-full max-w-[340px] items-center justify-center gap-2.5 text-gold">
             <span aria-hidden className="flex items-center">
@@ -62,7 +63,6 @@ export function HomeHero() {
             </button>
           </form>
         </div>
-        {portrait && <HeroPortrait src={portrait} />}
       </div>
     </section>
   );

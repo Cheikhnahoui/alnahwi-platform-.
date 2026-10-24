@@ -26,7 +26,7 @@ export function findPortrait(): string | null {
  */
 export function HeroPortrait({ src }: { src: string }) {
   return (
-    <div className="relative mx-auto aspect-[462/281] w-[calc(100%-2rem)] max-w-[462px] [container-type:inline-size] min-[1180px]:absolute min-[1180px]:bottom-0 min-[1180px]:start-[96px] min-[1180px]:mx-0 min-[1180px]:w-[462px]">
+    <div className="relative mx-auto mt-6 aspect-[462/281] w-[calc(100%-2rem)] max-w-[462px] [container-type:inline-size] min-[1180px]:absolute min-[1180px]:bottom-0 min-[1180px]:start-[96px] min-[1180px]:mx-0 min-[1180px]:mt-0 min-[1180px]:w-[462px]">
       {/* Arched gold frame (decorative) */}
       <svg
         aria-hidden
