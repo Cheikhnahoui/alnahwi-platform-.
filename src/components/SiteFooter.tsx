@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Send } from "lucide-react";
 import type { SocialLinks } from "@/lib/content/queries";
-import { BrandMark } from "./BrandMark";
+import { BrandLogo } from "./BrandLogo";
 import { FOOTER_LINKS, POLICY_ROUTES } from "./nav-items";
 
 function YouTubeIcon() {
@@ -51,7 +51,10 @@ export function SiteFooter({
       <div className="relative mx-auto grid min-h-[106px] max-w-[1104px] items-center gap-5 px-4 pb-5 pt-[17px] md:grid-cols-[1fr_auto_1fr]">
         <div className="justify-self-start">
           <div className="flex items-center gap-2.5">
-            <BrandMark size={36} className="text-[#d9c28b]" />
+            {/* The logo has dark lettering, so on the dark green footer it sits on a light badge. */}
+            <span className="flex shrink-0 rounded-xl bg-[#f8f7f2] p-1">
+              <BrandLogo className="h-14" />
+            </span>
             <p className="leading-tight">
               <span className="block text-[11px] text-white/85">الموقع الرسمي للشيخ</span>
               <span className="block text-[14px] font-bold">عبد الرحمن النحوي</span>

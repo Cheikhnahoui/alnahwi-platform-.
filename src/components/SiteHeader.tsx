@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import { Search } from "lucide-react";
-import { BrandMark } from "./BrandMark";
+import { BrandLogo } from "./BrandLogo";
 import { MainNav } from "./MainNav";
 import { NAV_ITEMS } from "./nav-items";
 
@@ -10,7 +10,7 @@ export function SiteHeader() {
     <header className="relative z-20 h-[59px] border-b border-line bg-[#f8f7f2] shadow-[0_1px_6px_rgba(16,67,60,0.05)]">
       <div className="mx-auto flex h-full max-w-[1280px] items-center gap-4 px-4 lg:px-[72px]">
         <Link href="/" className="flex shrink-0 items-center gap-2.5" aria-label="الصفحة الرئيسية">
-          <BrandMark size={38} className="text-ink" />
+          <BrandLogo className="h-[54px]" />
           <span className="leading-tight">
             <span className="block text-[11px] text-[#3b4a4a]">الموقع الرسمي للشيخ</span>
             <span className="block text-[14px] font-bold text-ink">عبد الرحمن النحوي</span>
