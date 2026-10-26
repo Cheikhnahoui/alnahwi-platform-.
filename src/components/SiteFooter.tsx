@@ -56,12 +56,12 @@ export function SiteFooter({
               <BrandLogo className="h-14" />
             </span>
             <p className="leading-tight">
-              <span className="block text-[11px] text-white/85">الموقع الرسمي للشيخ</span>
+              <span className="block text-[11px] text-white/85">الموقع الرسمي للدكتور الشيخ</span>
               <span className="block text-[14px] font-bold">عبد الرحمن النحوي</span>
             </p>
           </div>
           <p className="mt-2 text-[10px] text-white/80">
-            جميع الحقوق محفوظة {year ? <>© {year} · </> : null}الموقع الرسمي للشيخ عبد الرحمن النحوي
+            جميع الحقوق محفوظة {year ? <>© {year} · </> : null}الموقع الرسمي للدكتور الشيخ عبد الرحمن النحوي
           </p>
         </div>
 
