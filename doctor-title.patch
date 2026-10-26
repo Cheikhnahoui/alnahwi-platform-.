@@ -1,0 +1,35 @@
+diff --git a/src/app/layout.tsx b/src/app/layout.tsx
+--- a/src/app/layout.tsx
++++ b/src/app/layout.tsx
+@@ -6,8 +6,8 @@
+ export const metadata: Metadata = {
+   metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+   title: {
+-    default: "الشيخ عبد الرحمن النحوي | الموقع الرسمي",
+-    template: `%s | الشيخ عبد الرحمن النحوي`,
++    default: "د. الشيخ عبد الرحمن النحوي | الموقع الرسمي",
++    template: `%s | د. الشيخ عبد الرحمن النحوي`,
+   },
+   description:
+     "الموقع الرسمي للشيخ عبد الرحمن النحوي (عبدالرحمن النحوي): مكتبة علمية رقمية تجمع المحاضرات والدروس والمواد الصوتية والبحوث والمقالات والقصائد المتاحة، مع العناية بالمصادر وحقوق النشر.",
+@@ -17,7 +17,7 @@
+     locale: "ar",
+     type: "website",
+     url: "/",
+-    title: "الشيخ عبد الرحمن النحوي | الموقع الرسمي",
++    title: "د. الشيخ عبد الرحمن النحوي | الموقع الرسمي",
+   },
+ };
+ 
+diff --git a/src/components/NamePlate.tsx b/src/components/NamePlate.tsx
+--- a/src/components/NamePlate.tsx
++++ b/src/components/NamePlate.tsx
+@@ -8,7 +8,7 @@
+   return (
+     <div className={className}>
+       <div className="flex h-full flex-col items-center justify-center px-[2.6cqw] text-center">
+-        <p className="font-calligraphy text-[2.81cqw] leading-none text-ink">الشيخ</p>
++        <p className="font-calligraphy text-[2.81cqw] leading-none text-ink">د. الشيخ</p>
+         <p className="mt-[1.73cqw] whitespace-nowrap font-calligraphy text-[3.46cqw] font-bold leading-none text-ink">
+           عبد الرحمن النحوي
+         </p>

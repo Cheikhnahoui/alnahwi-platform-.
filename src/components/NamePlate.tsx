@@ -8,7 +8,7 @@ export function NamePlate({ className = "" }: { className?: string }) {
   return (
     <div className={className}>
       <div className="flex h-full flex-col items-center justify-center px-[2.6cqw] text-center">
-        <p className="font-calligraphy text-[2.81cqw] leading-none text-ink">الشيخ</p>
+        <p className="font-calligraphy text-[2.81cqw] leading-none text-ink">د. الشيخ</p>
         <p className="mt-[1.73cqw] whitespace-nowrap font-calligraphy text-[3.46cqw] font-bold leading-none text-ink">
           عبد الرحمن النحوي
         </p>
