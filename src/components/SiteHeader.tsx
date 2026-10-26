@@ -12,7 +12,7 @@ export function SiteHeader() {
         <Link href="/" className="flex shrink-0 items-center gap-2.5" aria-label="الصفحة الرئيسية">
           <BrandLogo className="h-[54px]" />
           <span className="leading-tight">
-            <span className="block text-[11px] text-[#3b4a4a]">الموقع الرسمي للشيخ</span>
+            <span className="block text-[11px] text-[#3b4a4a]">الموقع الرسمي للدكتور الشيخ</span>
             <span className="block text-[14px] font-bold text-ink">عبد الرحمن النحوي</span>
           </span>
         </Link>
