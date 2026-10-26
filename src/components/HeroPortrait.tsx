@@ -5,8 +5,10 @@ import { NamePlate } from "./NamePlate";
 /**
  * Official portrait slot. The picture is only shown when a file named
  * public/images/sheikh-portrait.(webp|png|jpg) exists, i.e. once an official,
- * permitted photograph is supplied (a cut-out with transparent background
- * gives the intended look). Nothing is shown otherwise.
+ * permitted photograph is supplied. It should be a cut-out with a transparent background, so the
+ * person stands on the hero background. Nothing is shown otherwise. On phones and tablets the bottom
+ * of the picture fades out, because there the person floats above the heading instead of standing
+ * on the edge of the hero.
  */
 const CANDIDATES = ["webp", "png", "jpg"] as const;
 
@@ -42,7 +44,7 @@ export function HeroPortrait({ src }: { src: string }) {
       <img
         src={src}
         alt="صورة الشيخ عبد الرحمن النحوي"
-        className="absolute bottom-0 left-0 h-full w-[68.83%] object-cover object-top"
+        className="absolute bottom-0 left-0 h-full w-[68.83%] object-cover object-top max-[1179px]:[-webkit-mask-image:linear-gradient(to_bottom,#000_70%,transparent)] max-[1179px]:[mask-image:linear-gradient(to_bottom,#000_70%,transparent)]"
       />
       <NamePlate className="absolute left-[70.56%] top-[25.27%] h-[39.15%] w-[29.44%]" />
     </div>
