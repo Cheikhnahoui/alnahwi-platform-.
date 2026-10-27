@@ -5,7 +5,7 @@ import { typeUi } from "./content-type-ui";
 /** Shortcuts into the library, one per content type of the approved design. */
 const TILES = [
   { type: "lecture", title: "محاضرات ودروس", subtitle: "محاضرات ودروس مسجلة" },
-  { type: "lesson", title: "دروس", subtitle: "دروس علمية متنوعة" },
+  { type: "lesson", title: "خواطر", subtitle: "دروس علمية متنوعة" },
   { type: "audio", title: "تسجيل صوتي", subtitle: "مواد صوتية مختارة" },
   { type: "research", title: "بحث", subtitle: "أبحاث ودراسات علمية" },
   { type: "article", title: "مقالات", subtitle: "مقالات ومشاركات علمية" },
