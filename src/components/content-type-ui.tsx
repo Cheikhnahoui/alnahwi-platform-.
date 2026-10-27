@@ -3,6 +3,7 @@ import {
   FileText,
   Feather,
   Headphones,
+  Lightbulb,
   Mic,
   NotepadText,
   type LucideIcon,
