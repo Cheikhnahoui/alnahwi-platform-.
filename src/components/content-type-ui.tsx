@@ -59,6 +59,12 @@ export const TYPE_UI: Record<string, TypeUi> = {
   book: { ...NEUTRAL, badge: { bg: "#e9efe0", fg: "#5b6b3a" } },
   participation: { ...NEUTRAL, badge: { bg: "#e6eef5", fg: "#3f6786" }, action: "play" },
   seminar: { ...NEUTRAL, badge: { bg: "#e6eef5", fg: "#3f6786" }, action: "play" },
+  khawatir: {
+    Icon: Lightbulb,
+    tile: { bg: "#f8efcf", fg: "#8a6d1c" },
+    badge: { bg: "#f8efcf", fg: "#7c6320" },
+    action: "file",
+  },
   poem: {
     Icon: Feather,
     tile: { bg: "#d8efe6", fg: "#1e6a55" },

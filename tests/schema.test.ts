@@ -30,7 +30,7 @@ afterAll(async () => ctx.client.close());
 describe("reference seed", () => {
   it("creates roles, permissions and content types", async () => {
     expect((await ctx.db.select().from(s.roles)).length).toBe(4);
-    expect((await ctx.db.select().from(s.contentTypes)).length).toBe(10);
+    expect((await ctx.db.select().from(s.contentTypes)).length).toBe(11);
   });
   it("is idempotent", async () => {
     await seedReferenceData(ctx.db);

@@ -22,6 +22,7 @@ export const DEFAULT_CONTENT_TYPES = [
   { key: "participation", name: "مشاركة علمية" },
   { key: "seminar", name: "ندوة أو مؤتمر" },
   { key: "poem", name: "قصيدة أو نص علمي" },
+  { key: "khawatir", name: "خواطر" },
   { key: "other", name: "مادة أخرى" },
 ] as const;
 
