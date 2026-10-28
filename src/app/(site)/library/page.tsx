@@ -3,20 +3,20 @@ import type { Metadata } from "next";
 import { FilterPanel } from "@/components/FilterPanel";
 import { LoadingState } from "@/components/LoadingState";
 import { PageContainer } from "@/components/PageContainer";
-import { Pagination } from "@/components/Pagination";
 import { EmptyState } from "@/components/EmptyState";
 import { ResultsView } from "@/components/ResultsView";
-import { TitleList } from "@/components/TitleList";
+import { KhawatirPosts } from "@/components/KhawatirPosts";
 import { hasActiveFilters, parseListFilters, type RawSearchParams } from "@/lib/content/params";
 import {
   listActiveTypesCached,
   listCategoryTreeCached,
   listContentPublic,
+  listPublishedWithTextCached,
 } from "@/lib/content/public";
 
 type Props = { searchParams: Promise<RawSearchParams> };
 
-/** Khawatir is shown as a plain list of titles, with no search or filters. */
+/** Khawatir is one long page of full posts, with no search or filters. */
 const KHAWATIR = "khawatir";
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
@@ -25,7 +25,6 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
     return {
       title: "خواطر",
       alternates: { canonical: `/library?type=${KHAWATIR}` },
-      robots: f.page > 1 ? { index: false, follow: true } : undefined,
     };
   }
   return {
@@ -49,7 +48,7 @@ export default function LibraryPage({ searchParams }: Props) {
 
 async function LibraryBody({ searchParams }: Props) {
   const filters = parseListFilters(await searchParams);
-  if (filters.type === KHAWATIR) return <KhawatirList page={filters.page} />;
+  if (filters.type === KHAWATIR) return <KhawatirList />;
 
   const [types, categories, result] = await Promise.all([
     listActiveTypesCached(),
@@ -70,10 +69,9 @@ async function LibraryBody({ searchParams }: Props) {
   );
 }
 
-async function KhawatirList({ page }: { page: number }) {
-  // Only the page number is honoured; q/category/sort from the URL are ignored on purpose.
-  const filters = { q: "", type: KHAWATIR, category: "", sort: "newest" as const, page };
-  const { items, total, pageSize } = await listContentPublic(filters);
+async function KhawatirList() {
+  // Everything on one page: URL parameters (q, category, sort, page) are ignored on purpose.
+  const items = await listPublishedWithTextCached(KHAWATIR);
   return (
     <>
       <h1 className="text-3xl font-bold">خواطر</h1>
@@ -81,10 +79,7 @@ async function KhawatirList({ page }: { page: number }) {
         {items.length === 0 ? (
           <EmptyState title="لا توجد خواطر منشورة بعد" />
         ) : (
-          <>
-            <TitleList items={items} />
-            <Pagination basePath="/library" filters={filters} total={total} pageSize={pageSize} />
-          </>
+          <KhawatirPosts items={items} />
         )}
       </div>
     </>

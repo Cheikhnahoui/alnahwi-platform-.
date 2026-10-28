@@ -521,3 +521,32 @@ export async function getSocialLinks(db: AnyDb): Promise<SocialLinks> {
   }
   return out;
 }
+
+/* ───────────── Whole type on one page (e.g. Khawatir) ───────────── */
+
+export type FullTextItem = {
+  id: string;
+  slug: string;
+  title: string;
+  summary: string | null;
+  description: string | null;
+};
+
+/**
+ * Every public item of one content type with its complete text, newest first (items without a
+ * publication date last). Deliberately unpaginated: used only for types shown as one long page.
+ */
+export async function listPublishedWithText(db: AnyDb, typeKey: string): Promise<FullTextItem[]> {
+  return db
+    .select({
+      id: s.contentItems.id,
+      slug: s.contentItems.slug,
+      title: s.contentItems.title,
+      summary: s.contentItems.summary,
+      description: s.contentItems.description,
+    })
+    .from(s.contentItems)
+    .innerJoin(s.contentTypes, eq(s.contentTypes.id, s.contentItems.contentTypeId))
+    .where(and(isPublic(), eq(s.contentTypes.key, typeKey)))
+    .orderBy(sql`${s.contentItems.publishedAt} desc nulls last`, desc(s.contentItems.id));
+}

@@ -26,6 +26,13 @@ export async function listContentPublic(params: q.ListParams) {
   return params.q ? q.listContent(getDb(), params) : listContentCached(params);
 }
 
+export async function listPublishedWithTextCached(typeKey: string) {
+  "use cache";
+  cacheLife("minutes");
+  cacheTag("content");
+  return q.listPublishedWithText(getDb(), typeKey);
+}
+
 export async function getContentBySlugCached(slug: string) {
   "use cache";
   cacheLife("minutes");
