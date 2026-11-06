@@ -5,7 +5,7 @@ import { LoadingState } from "@/components/LoadingState";
 import { PageContainer } from "@/components/PageContainer";
 import { EmptyState } from "@/components/EmptyState";
 import { ResultsView } from "@/components/ResultsView";
-import { KhawatirPosts } from "@/components/KhawatirPosts";
+import { FullPosts } from "@/components/FullPosts";
 import { hasActiveFilters, parseListFilters, type RawSearchParams } from "@/lib/content/params";
 import {
   listActiveTypesCached,
@@ -16,15 +16,19 @@ import {
 
 type Props = { searchParams: Promise<RawSearchParams> };
 
-/** Khawatir is one long page of full posts, with no search or filters. */
-const KHAWATIR = "khawatir";
+/** These types are one long page of full posts, with no search or filters. */
+const FULL_TEXT_TYPES = new Map([
+  ["khawatir", { title: "خواطر", empty: "لا توجد خواطر منشورة بعد" }],
+  ["poem", { title: "قصائد الشيخ", empty: "لا توجد قصائد منشورة بعد" }],
+]);
 
 export async function generateMetadata({ searchParams }: Props): Promise<Metadata> {
   const f = parseListFilters(await searchParams);
-  if (f.type === KHAWATIR) {
+  const fullText = FULL_TEXT_TYPES.get(f.type);
+  if (fullText) {
     return {
-      title: "خواطر",
-      alternates: { canonical: `/library?type=${KHAWATIR}` },
+      title: fullText.title,
+      alternates: { canonical: `/library?type=${f.type}` },
     };
   }
   return {
@@ -48,7 +52,8 @@ export default function LibraryPage({ searchParams }: Props) {
 
 async function LibraryBody({ searchParams }: Props) {
   const filters = parseListFilters(await searchParams);
-  if (filters.type === KHAWATIR) return <KhawatirList />;
+  const fullText = FULL_TEXT_TYPES.get(filters.type);
+  if (fullText) return <FullTextList typeKey={filters.type} {...fullText} />;
 
   const [types, categories, result] = await Promise.all([
     listActiveTypesCached(),
@@ -69,18 +74,22 @@ async function LibraryBody({ searchParams }: Props) {
   );
 }
 
-async function KhawatirList() {
+async function FullTextList({
+  typeKey,
+  title,
+  empty,
+}: {
+  typeKey: string;
+  title: string;
+  empty: string;
+}) {
   // Everything on one page: URL parameters (q, category, sort, page) are ignored on purpose.
-  const items = await listPublishedWithTextCached(KHAWATIR);
+  const items = await listPublishedWithTextCached(typeKey);
   return (
     <>
-      <h1 className="text-3xl font-bold">خواطر</h1>
+      <h1 className="text-3xl font-bold">{title}</h1>
       <div className="mt-8">
-        {items.length === 0 ? (
-          <EmptyState title="لا توجد خواطر منشورة بعد" />
-        ) : (
-          <KhawatirPosts items={items} />
-        )}
+        {items.length === 0 ? <EmptyState title={empty} /> : <FullPosts items={items} />}
       </div>
     </>
   );
